@@ -1,0 +1,35 @@
+{
+  "checkpoint": {
+    "path": "runs/catan-ai/mixed-native-visible/cohort-001/cnn/iteration-1/final.pt",
+    "sha256": "0a6fd1181faa6ca4c1bf6cba84ba40651eb6eade9c46aa1d99ddedb112569a42"
+  },
+  "search": {
+    "c_puct": 1.5,
+    "chance": "true-probability-merged",
+    "opponent": "frozen-MLP-D2-W0",
+    "root_selection": [
+      "visits",
+      "mean_value",
+      "stable_action_id"
+    ],
+    "max_root_depth": null,
+    "max_actions": 128,
+    "opponent_checkpoint": {
+      "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+      "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+    },
+    "workers": 1,
+    "revision": "optimized-unbounded-own-actions-v1",
+    "reuse_subtree": true
+  },
+  "budget_ms": 1000,
+  "model": "XD-CNN",
+  "recipe": "D2-W4",
+  "selection": {
+    "purpose": "User-selected mixed final checkpoint for web gameplay",
+    "wins": 7,
+    "games": 10,
+    "benchmark_record": "runs/catan-ai/mixed-cnn-search1000-10games/summary.json",
+    "friendly_robber": true
+  }
+}

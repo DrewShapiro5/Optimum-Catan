@@ -1,0 +1,816 @@
+{
+  "status": "running",
+  "evaluation_complete": false,
+  "final_evaluation_seeds_used": false,
+  "futility_rule": "experiments/catan-ai/FUTILITY.md",
+  "source_sha256": {
+    "agent_apis/futility.py": "8552e0c9187e1bbc7aa293a2c62081f6e3684a440830d8e944dfe168a03645c7",
+    "agent_apis/benchmark.py": "1504ce84e4543fe43686837a6ef57c754acc1cc37aa49bd94840b1d45b3ad840",
+    "agent_apis/neural/provider.py": "e683c0c6489f0895eb1cae942a108bbfbc3c854d9536ca20d2726908019c3626",
+    "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+    "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+    "agent_apis/neural/pipeline.py": "d18369762c5e20591002b7524eac70a3da209c2350b390dbcfd356a801ced735",
+    "agent_apis/stochastic.py": "52d33bef4f5941bf29b30d0a3549d1bfcb8e2b646ac0d304b33c8f90e5d8878e",
+    "agent_apis/stochastic_search.py": "c459dec0e098177a047950348b98a9b8d620a21767eb8d051e4fedbb8437850d",
+    "agent_apis/development_belief.py": "e4126270b2b86fba2bbee3f6283e153688d131622f08b54c993d03c09b343303",
+    "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+    "agent_apis/neural/train.py": "d748d412f8e5c4557b3386bb9e694ab41a351e71c018e924dbfd368c543fd071",
+    "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+    "agent_apis/agents.json": "26b1d8609f3c351cdeeb73722a7cc5b0084c9c8e66a112531a7017ffa6bf9100",
+    "experiments/catan-ai/phase5-frozen-opponent.json": "1e9148233227386aec522fd2978de519e0c0e8254d997cdebcb897defcee14c8",
+    "experiments/catan-ai/feature-schema-v3.json": "69e8b98f1aaeffd71b4dcda923c0c04348b8039b37ef74562a05520197b48894",
+    "agent_apis/neural/evaluation.py": "ad78bcf9d9a7d395b4d9c8c5b23bd02a149fb2e71fce77a34cbd5a08ad0db2b6"
+  },
+  "selection_rule": "Rank by highest feasible, non-futile policy or 500ms search score. Confirm at most two eligible architectures on seeds23/47; do not force a shortlist when every architecture is futile.",
+  "architectures": {
+    "MLP": {
+      "training": {},
+      "matches": {
+        "11": {
+          "policy": {
+            "run_record": "runs/catan-ai/phase3-NEURAL_POLICY-d06afbec8658-20261105T013753865136Z/run.json",
+            "partial_run_directory": null,
+            "run_record_sha256": "b1ea4eb597f6cbac4be6b4efe1c524d75acb53a162f74faf3342c2c12668e2c9",
+            "status": "historical-completed",
+            "metrics": {
+              "games": 200,
+              "wins": 0,
+              "losses": 200,
+              "cutoffs": 0,
+              "errors": 0,
+              "illegal_actions": 0,
+              "completed_game_win_rate": 0.0,
+              "overall_match_score": 0.0,
+              "match_score_ci95": [
+                null,
+                null
+              ],
+              "score_without_cutoffs": 0.0,
+              "seat_specific": {
+                "0": {
+                  "games": 100,
+                  "wins": 0,
+                  "losses": 100,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                },
+                "1": {
+                  "games": 100,
+                  "wins": 0,
+                  "losses": 100,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                }
+              },
+              "turns": {
+                "p50": 111.0,
+                "max": 345
+              },
+              "candidate_latency_all": {
+                "count": 30926,
+                "p50_ms": 0.7767085007799324,
+                "p95_ms": 1.2355622548057,
+                "p99_ms": 1.4027397501195082
+              },
+              "candidate_latency_warm_nonforced": {
+                "count": 22177,
+                "p50_ms": 0.9026249972521327,
+                "p95_ms": 1.2645000024349429,
+                "p99_ms": 1.4364268383360468
+              },
+              "candidate_cold_first_decision": {
+                "count": 200,
+                "p50_ms": 1.2513125002442393,
+                "p95_ms": 1.4330645968584577,
+                "p99_ms": 1.6903674087370548
+              },
+              "candidate_decision_seconds": 22.80164178171981,
+              "candidate_decisions_per_second": 1356.3058439411818,
+              "candidate_overruns": 0,
+              "native_translation_rejections": 0,
+              "candidate_warm_overruns": 0,
+              "p95_limit_ms": 525.0,
+              "timing_gate_passed": true,
+              "cutoff_gate_passed": true,
+              "failure_gate_passed": true,
+              "lower_bound_above_50_percent": false,
+              "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+              "futility": {
+                "stopped": true,
+                "retrospective": true,
+                "reason": "Existing zero-win baseline; no new matches or prospective stopping claim"
+              },
+              "all_completed_games": 200,
+              "unpaired_completed_games": 0,
+              "terminal_score_summary": {
+                "games": 200,
+                "wins": 0,
+                "losses": 200,
+                "errors": 0,
+                "cutoffs": 0,
+                "vp_margin_mean": -11.34,
+                "vp_margin_median": -12.0,
+                "candidate_vp_histogram": {
+                  "2": 56,
+                  "3": 54,
+                  "4": 41,
+                  "5": 25,
+                  "6": 11,
+                  "7": 6,
+                  "8": 1,
+                  "9": 3,
+                  "10": 3
+                },
+                "mean_turns": 119.36,
+                "seats": {
+                  "0": {
+                    "games": 100,
+                    "mean_candidate_vp": 3.64,
+                    "mean_vp_margin": -11.39
+                  },
+                  "1": {
+                    "games": 100,
+                    "mean_candidate_vp": 3.72,
+                    "mean_vp_margin": -11.29
+                  }
+                },
+                "candidate": {
+                  "mean_vp": 3.68,
+                  "mean_settlements": 1.54,
+                  "mean_cities": 0.54,
+                  "mean_roads": 2.74,
+                  "mean_resource_cards": 5.295,
+                  "mean_longest_road_length": 1.545,
+                  "actions_per_game": {
+                    "BUILD_SETTLEMENT": 2.08,
+                    "BUILD_ROAD": 2.74,
+                    "ROLL": 58.93,
+                    "BUY_DEVELOPMENT_CARD": 5.1,
+                    "END_TURN": 58.93,
+                    "MOVE_ROBBER": 11.07,
+                    "MARITIME_TRADE": 8.875,
+                    "PLAY_KNIGHT_CARD": 1.32,
+                    "DISCARD_RESOURCE": 4.675,
+                    "BUILD_CITY": 0.54,
+                    "PLAY_ROAD_BUILDING": 0.37
+                  },
+                  "end_turn_opportunities": {
+                    "end_turns": 11786,
+                    "end_with_settlement_or_city_available": 78,
+                    "end_with_any_build_available": 3225,
+                    "end_with_development_card_available": 0
+                  },
+                  "opening_cards_per_roll": 0.4815277777777778,
+                  "opening_resource_production": {
+                    "WOOD": 0.10597222222222222,
+                    "BRICK": 0.07736111111111112,
+                    "SHEEP": 0.11069444444444444,
+                    "WHEAT": 0.10916666666666666,
+                    "ORE": 0.07833333333333334
+                  },
+                  "opening_missing_wood_or_brick_games": 108
+                },
+                "opponent": {
+                  "mean_vp": 15.02,
+                  "mean_settlements": 1.81,
+                  "mean_cities": 3.615,
+                  "mean_roads": 7.99,
+                  "mean_resource_cards": 4.785,
+                  "mean_longest_road_length": 5.44,
+                  "actions_per_game": {
+                    "BUILD_SETTLEMENT": 5.425,
+                    "BUILD_ROAD": 7.99,
+                    "ROLL": 59.425,
+                    "END_TURN": 58.43,
+                    "MARITIME_TRADE": 19.575,
+                    "BUY_DEVELOPMENT_CARD": 9.7,
+                    "MOVE_ROBBER": 15.205,
+                    "PLAY_KNIGHT_CARD": 5.105,
+                    "PLAY_MONOPOLY": 0.035,
+                    "PLAY_YEAR_OF_PLENTY": 0.73,
+                    "PLAY_ROAD_BUILDING": 0.88,
+                    "BUILD_CITY": 3.615,
+                    "DISCARD_RESOURCE": 2.105
+                  },
+                  "end_turn_opportunities": {
+                    "end_turns": 11686,
+                    "end_with_settlement_or_city_available": 165,
+                    "end_with_any_build_available": 2253,
+                    "end_with_development_card_available": 526
+                  },
+                  "opening_cards_per_roll": 0.5863888888888888,
+                  "opening_resource_production": {
+                    "WOOD": 0.12388888888888888,
+                    "BRICK": 0.08402777777777777,
+                    "SHEEP": 0.12069444444444444,
+                    "WHEAT": 0.14055555555555554,
+                    "ORE": 0.11722222222222221
+                  },
+                  "opening_missing_wood_or_brick_games": 94
+                },
+                "own_play_value_samples": {
+                  "1": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.3370076365768909,
+                    "mean_actual_vp": 2,
+                    "mean_opponent_vp": 2.05
+                  },
+                  "10": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.32243442283943297,
+                    "mean_actual_vp": 2.5,
+                    "mean_opponent_vp": 2.5
+                  },
+                  "20": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.33164274400332944,
+                    "mean_actual_vp": 2.95,
+                    "mean_opponent_vp": 3.55
+                  },
+                  "40": {
+                    "count": 19,
+                    "mean_predicted_win_probability": 0.14873798693358703,
+                    "mean_actual_vp": 3.789473684210526,
+                    "mean_opponent_vp": 7
+                  }
+                },
+                "frozen_opponent_agreement": {
+                  "nonforced": {
+                    "samples": 296,
+                    "top1_accuracy": 0.6621621621621622,
+                    "mean_target_probability": 0.5830911769990443
+                  },
+                  "nonforced_excluding_roll": {
+                    "samples": 218,
+                    "top1_accuracy": 0.5412844036697247,
+                    "mean_target_probability": 0.49115025252028055
+                  }
+                }
+              },
+              "interval_status": "Historical zero-win sample; no superiority or optional-stopping confidence claim"
+            },
+            "promotion_eligible": false,
+            "historical_import": {
+              "diagnosis": "runs/catan-ai/phase5-loss-diagnosis.json",
+              "diagnosis_sha256": "299295c689d7e2ce5ae33a881429193e68823bf995dbc6803b04478087b514e7",
+              "games_sha256": "d034cb5c71ca7b0fa6b33017c6ab34c7b187c3556a985dfe2c1a368808bbd0be",
+              "timings_sha256": "550c5e18d656f6c853584a7127992a23b9c2b1abfd99b6ad3250099a7d939752",
+              "original_provenance": "runs/catan-ai/phase3-NEURAL_POLICY-7daeffab6f63-20261105T013558697022Z/run.json",
+              "belief_fix_exception": null
+            }
+          },
+          "search": {
+            "run_record": null,
+            "partial_run_directory": "runs/catan-ai/phase3-NEURAL_SEARCH-d65c6940b25c-20261105T023015380126Z",
+            "run_record_sha256": null,
+            "status": "historical-interrupted",
+            "metrics": {
+              "games": 86,
+              "wins": 0,
+              "losses": 86,
+              "cutoffs": 0,
+              "errors": 0,
+              "illegal_actions": 0,
+              "completed_game_win_rate": 0.0,
+              "overall_match_score": 0.0,
+              "match_score_ci95": [
+                null,
+                null
+              ],
+              "score_without_cutoffs": 0.0,
+              "seat_specific": {
+                "0": {
+                  "games": 43,
+                  "wins": 0,
+                  "losses": 43,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                },
+                "1": {
+                  "games": 43,
+                  "wins": 0,
+                  "losses": 43,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                }
+              },
+              "turns": {
+                "p50": 114.5,
+                "max": 230
+              },
+              "candidate_latency_all": {
+                "count": 13554,
+                "p50_ms": 480.15168749770964,
+                "p95_ms": 514.1991562493786,
+                "p99_ms": 531.8107222604158
+              },
+              "candidate_latency_warm_nonforced": {
+                "count": 10881,
+                "p50_ms": 481.66104199481197,
+                "p95_ms": 518.2961669997894,
+                "p99_ms": 533.0729748049635
+              },
+              "candidate_cold_first_decision": {
+                "count": 86,
+                "p50_ms": 479.84625000390224,
+                "p95_ms": 484.61323925039324,
+                "p99_ms": 500.07734380560584
+              },
+              "candidate_decision_seconds": 5331.318687758,
+              "candidate_decisions_per_second": 2.542335357127172,
+              "candidate_overruns": 1188,
+              "native_translation_rejections": 0,
+              "candidate_warm_overruns": 1187,
+              "p95_limit_ms": 525.0,
+              "timing_gate_passed": true,
+              "cutoff_gate_passed": true,
+              "failure_gate_passed": true,
+              "lower_bound_above_50_percent": false,
+              "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+              "futility": {
+                "stopped": true,
+                "retrospective": true,
+                "reason": "Existing zero-win baseline; no new matches or prospective stopping claim"
+              },
+              "all_completed_games": 87,
+              "unpaired_completed_games": 1,
+              "terminal_score_summary": {
+                "games": 87,
+                "wins": 0,
+                "losses": 87,
+                "errors": 0,
+                "cutoffs": 0,
+                "vp_margin_mean": -10.96551724137931,
+                "vp_margin_median": -11,
+                "candidate_vp_histogram": {
+                  "2": 18,
+                  "3": 24,
+                  "4": 16,
+                  "5": 11,
+                  "6": 10,
+                  "7": 2,
+                  "8": 5,
+                  "10": 1
+                },
+                "mean_turns": 120.08045977011494,
+                "seats": {
+                  "0": {
+                    "games": 43,
+                    "mean_candidate_vp": 3.86046511627907,
+                    "mean_vp_margin": -11.13953488372093
+                  },
+                  "1": {
+                    "games": 44,
+                    "mean_candidate_vp": 4.204545454545454,
+                    "mean_vp_margin": -10.795454545454545
+                  }
+                },
+                "candidate": {
+                  "mean_vp": 4.0344827586206895,
+                  "mean_settlements": 1.3908045977011494,
+                  "mean_cities": 0.7471264367816092,
+                  "mean_roads": 2.8275862068965516,
+                  "mean_resource_cards": 5.850574712643678,
+                  "mean_longest_road_length": 1.7011494252873562,
+                  "actions_per_game": {
+                    "BUILD_SETTLEMENT": 2.1379310344827585,
+                    "BUILD_ROAD": 2.8275862068965516,
+                    "ROLL": 59.28735632183908,
+                    "END_TURN": 59.28735632183908,
+                    "MOVE_ROBBER": 10.781609195402298,
+                    "MARITIME_TRADE": 8.206896551724139,
+                    "DISCARD_RESOURCE": 7.413793103448276,
+                    "BUY_DEVELOPMENT_CARD": 5.551724137931035,
+                    "PLAY_KNIGHT_CARD": 1.2528735632183907,
+                    "PLAY_ROAD_BUILDING": 0.40229885057471265,
+                    "BUILD_CITY": 0.7471264367816092,
+                    "PLAY_YEAR_OF_PLENTY": 0.011494252873563218,
+                    "PLAY_MONOPOLY": 0.011494252873563218
+                  },
+                  "end_turn_opportunities": {
+                    "end_turns": 5158,
+                    "end_with_settlement_or_city_available": 0,
+                    "end_with_any_build_available": 1486,
+                    "end_with_development_card_available": 0
+                  },
+                  "opening_cards_per_roll": 0.4843550446998723,
+                  "opening_resource_production": {
+                    "WOOD": 0.08908045977011494,
+                    "BRICK": 0.09163473818646233,
+                    "SHEEP": 0.09610472541507024,
+                    "WHEAT": 0.10632183908045977,
+                    "ORE": 0.101213282247765
+                  },
+                  "opening_missing_wood_or_brick_games": 43
+                },
+                "opponent": {
+                  "mean_vp": 15,
+                  "mean_settlements": 1.793103448275862,
+                  "mean_cities": 3.5977011494252875,
+                  "mean_roads": 8.03448275862069,
+                  "mean_resource_cards": 4.563218390804598,
+                  "mean_longest_road_length": 5.494252873563219,
+                  "actions_per_game": {
+                    "BUILD_SETTLEMENT": 5.390804597701149,
+                    "BUILD_ROAD": 8.03448275862069,
+                    "ROLL": 59.793103448275865,
+                    "END_TURN": 58.793103448275865,
+                    "MARITIME_TRADE": 20.333333333333332,
+                    "BUY_DEVELOPMENT_CARD": 9.540229885057471,
+                    "MOVE_ROBBER": 15.022988505747126,
+                    "PLAY_KNIGHT_CARD": 4.735632183908046,
+                    "PLAY_YEAR_OF_PLENTY": 0.7816091954022989,
+                    "BUILD_CITY": 3.5977011494252875,
+                    "PLAY_ROAD_BUILDING": 0.9540229885057471,
+                    "DISCARD_RESOURCE": 2.3448275862068964,
+                    "PLAY_MONOPOLY": 0.08045977011494253
+                  },
+                  "end_turn_opportunities": {
+                    "end_turns": 5115,
+                    "end_with_settlement_or_city_available": 66,
+                    "end_with_any_build_available": 915,
+                    "end_with_development_card_available": 257
+                  },
+                  "opening_cards_per_roll": 0.5826947637292464,
+                  "opening_resource_production": {
+                    "WOOD": 0.12707535121328226,
+                    "BRICK": 0.06960408684546615,
+                    "SHEEP": 0.1388888888888889,
+                    "WHEAT": 0.13409961685823754,
+                    "ORE": 0.11302681992337164
+                  },
+                  "opening_missing_wood_or_brick_games": 51
+                },
+                "own_play_value_samples": {
+                  "1": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.6705037698149681,
+                    "mean_actual_vp": 2.05,
+                    "mean_opponent_vp": 2
+                  },
+                  "10": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.5936186575330794,
+                    "mean_actual_vp": 2.4,
+                    "mean_opponent_vp": 2.7
+                  },
+                  "20": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.534962882194668,
+                    "mean_actual_vp": 2.8,
+                    "mean_opponent_vp": 3.65
+                  },
+                  "40": {
+                    "count": 20,
+                    "mean_predicted_win_probability": 0.20474983258845897,
+                    "mean_actual_vp": 3.5,
+                    "mean_opponent_vp": 8.4
+                  }
+                },
+                "frozen_opponent_agreement": {
+                  "nonforced": {
+                    "samples": 269,
+                    "top1_accuracy": 0.6951672862453532,
+                    "mean_target_probability": 0.6009824774398144
+                  },
+                  "nonforced_excluding_roll": {
+                    "samples": 198,
+                    "top1_accuracy": 0.5858585858585859,
+                    "mean_target_probability": 0.4904560048647658
+                  }
+                }
+              },
+              "interval_status": "Historical zero-win sample; no superiority or optional-stopping confidence claim"
+            },
+            "promotion_eligible": false,
+            "historical_import": {
+              "diagnosis": "runs/catan-ai/phase5-loss-diagnosis.json",
+              "diagnosis_sha256": "299295c689d7e2ce5ae33a881429193e68823bf995dbc6803b04478087b514e7",
+              "games_sha256": "3110068cab93e253d302583e35054fb06b288dbd55dd7890b4f2175abddf253b",
+              "timings_sha256": "a1a1c0201f55c993a4b9eb308351395b74a1a3ddc2195beb2a093d8f6364afa5",
+              "original_provenance": "runs/catan-ai/phase3-NEURAL_SEARCH-3481c0281ab5-20261105T014514790479Z/run.json",
+              "belief_fix_exception": "Historical pre-fix baseline; sampled-world equivalence verified; never eligible for promotion"
+            }
+          }
+        }
+      },
+      "confirmed_across_training_seeds": false
+    },
+    "XD-CNN": {
+      "training": {},
+      "matches": {
+        "11": {
+          "policy": {
+            "run_record": "runs/catan-ai/phase3-NEURAL_POLICY-4b0d56110055-20261105T033728078511Z/run.json",
+            "partial_run_directory": null,
+            "run_record_sha256": "83002de70be59e0746a8e3db090d8a77dad3c5c07cf4561d168568988e757891",
+            "status": "completed",
+            "metrics": {
+              "games": 200,
+              "wins": 43,
+              "losses": 153,
+              "cutoffs": 4,
+              "errors": 0,
+              "illegal_actions": 0,
+              "completed_game_win_rate": 0.2193877551020408,
+              "overall_match_score": 0.225,
+              "match_score_ci95": [
+                0.165,
+                0.2875
+              ],
+              "score_without_cutoffs": 0.2193877551020408,
+              "seat_specific": {
+                "0": {
+                  "games": 100,
+                  "wins": 28,
+                  "losses": 71,
+                  "cutoffs": 1,
+                  "errors": 0,
+                  "match_score": 0.285
+                },
+                "1": {
+                  "games": 100,
+                  "wins": 15,
+                  "losses": 82,
+                  "cutoffs": 3,
+                  "errors": 0,
+                  "match_score": 0.165
+                }
+              },
+              "turns": {
+                "p50": 140.5,
+                "max": 1000
+              },
+              "candidate_latency_all": {
+                "count": 49848,
+                "p50_ms": 4.635083001630846,
+                "p95_ms": 6.661962299403964,
+                "p99_ms": 30.555974246890397
+              },
+              "candidate_latency_warm_nonforced": {
+                "count": 37728,
+                "p50_ms": 4.900125000858679,
+                "p95_ms": 7.089801850452208,
+                "p99_ms": 31.238909406965835
+              },
+              "candidate_cold_first_decision": {
+                "count": 200,
+                "p50_ms": 5.255437503365101,
+                "p95_ms": 6.449052052630577,
+                "p99_ms": 6.85547641784069
+              },
+              "candidate_decision_seconds": 208.4622585083198,
+              "candidate_decisions_per_second": 239.12242127996782,
+              "candidate_overruns": 0,
+              "native_translation_rejections": 0,
+              "candidate_warm_overruns": 0,
+              "p95_limit_ms": 525.0,
+              "timing_gate_passed": true,
+              "cutoff_gate_passed": false,
+              "failure_gate_passed": true,
+              "lower_bound_above_50_percent": false,
+              "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+              "futility": {
+                "policy": {
+                  "version": 1,
+                  "enabled": true,
+                  "minimum_pairs": 20,
+                  "check_every_pairs": 20,
+                  "alpha": 0.05,
+                  "hopeless_match_score": 0.25,
+                  "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+                },
+                "stopped": false,
+                "scheduled_pairs": 100,
+                "observed_pairs": 100,
+                "planned_looks": [
+                  20,
+                  40,
+                  60,
+                  80,
+                  100
+                ]
+              }
+            },
+            "promotion_eligible": false,
+            "historical_import": null
+          }
+        }
+      },
+      "confirmed_across_training_seeds": false
+    },
+    "H-GNN": {
+      "training": {},
+      "matches": {
+        "11": {
+          "policy": {
+            "run_record": "runs/catan-ai/phase3-NEURAL_POLICY-9a48b52700c5-20261105T035939022871Z/run.json",
+            "partial_run_directory": null,
+            "run_record_sha256": "e99ab654db3d9b1c35e5597f96b43eb92b70aa09f037a53b2854a99e7a599e60",
+            "status": "completed",
+            "metrics": {
+              "games": 40,
+              "wins": 0,
+              "losses": 38,
+              "cutoffs": 2,
+              "errors": 0,
+              "illegal_actions": 0,
+              "completed_game_win_rate": 0.0,
+              "overall_match_score": 0.025,
+              "match_score_ci95": [
+                0.0,
+                0.0625
+              ],
+              "score_without_cutoffs": 0.0,
+              "seat_specific": {
+                "0": {
+                  "games": 20,
+                  "wins": 0,
+                  "losses": 18,
+                  "cutoffs": 2,
+                  "errors": 0,
+                  "match_score": 0.05
+                },
+                "1": {
+                  "games": 20,
+                  "wins": 0,
+                  "losses": 20,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                }
+              },
+              "turns": {
+                "p50": 143.5,
+                "max": 1000
+              },
+              "candidate_latency_all": {
+                "count": 11774,
+                "p50_ms": 7.598791497002821,
+                "p95_ms": 11.415495949768232,
+                "p99_ms": 33.479680500677205
+              },
+              "candidate_latency_warm_nonforced": {
+                "count": 9676,
+                "p50_ms": 8.040103999519488,
+                "p95_ms": 11.943010247705388,
+                "p99_ms": 34.00247900208342
+              },
+              "candidate_cold_first_decision": {
+                "count": 40,
+                "p50_ms": 7.88820849993499,
+                "p95_ms": 10.613218749858774,
+                "p99_ms": 17.317006247249083
+              },
+              "candidate_decision_seconds": 86.52847450922127,
+              "candidate_decisions_per_second": 136.07081445478684,
+              "candidate_overruns": 0,
+              "native_translation_rejections": 0,
+              "candidate_warm_overruns": 0,
+              "p95_limit_ms": 525.0,
+              "timing_gate_passed": true,
+              "cutoff_gate_passed": false,
+              "failure_gate_passed": true,
+              "lower_bound_above_50_percent": false,
+              "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+              "futility": {
+                "policy": {
+                  "version": 1,
+                  "enabled": true,
+                  "minimum_pairs": 20,
+                  "check_every_pairs": 20,
+                  "alpha": 0.05,
+                  "hopeless_match_score": 0.25,
+                  "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+                },
+                "stopped": false,
+                "scheduled_pairs": 20,
+                "observed_pairs": 20,
+                "planned_looks": [
+                  20
+                ]
+              }
+            },
+            "promotion_eligible": false,
+            "historical_import": null
+          }
+        }
+      },
+      "confirmed_across_training_seeds": false
+    },
+    "TRANSFORMER": {
+      "training": {},
+      "matches": {
+        "11": {
+          "policy": {
+            "run_record": "runs/catan-ai/phase3-NEURAL_POLICY-3a8f77269f20-20261105T040348952600Z/run.json",
+            "partial_run_directory": null,
+            "run_record_sha256": "0ae265932ce40d122dc4de3064575197bb74f21a2df5b74011126a64601ffccd",
+            "status": "stopped-early",
+            "metrics": {
+              "games": 40,
+              "wins": 1,
+              "losses": 39,
+              "cutoffs": 0,
+              "errors": 0,
+              "illegal_actions": 0,
+              "completed_game_win_rate": 0.025,
+              "overall_match_score": 0.025,
+              "match_score_ci95": [
+                null,
+                null
+              ],
+              "score_without_cutoffs": 0.025,
+              "seat_specific": {
+                "0": {
+                  "games": 20,
+                  "wins": 1,
+                  "losses": 19,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.05
+                },
+                "1": {
+                  "games": 20,
+                  "wins": 0,
+                  "losses": 20,
+                  "cutoffs": 0,
+                  "errors": 0,
+                  "match_score": 0.0
+                }
+              },
+              "turns": {
+                "p50": 148.0,
+                "max": 243
+              },
+              "candidate_latency_all": {
+                "count": 9191,
+                "p50_ms": 4.768167003931012,
+                "p95_ms": 5.963896001048852,
+                "p99_ms": 6.9594663022144285
+              },
+              "candidate_latency_warm_nonforced": {
+                "count": 6992,
+                "p50_ms": 5.062812499090796,
+                "p95_ms": 6.025181250515743,
+                "p99_ms": 7.355951808131075
+              },
+              "candidate_cold_first_decision": {
+                "count": 40,
+                "p50_ms": 5.933770997216925,
+                "p95_ms": 6.86340624706645,
+                "p99_ms": 254.49511250219052
+              },
+              "candidate_decision_seconds": 37.135009617355536,
+              "candidate_decisions_per_second": 247.50229216864037,
+              "candidate_overruns": 0,
+              "native_translation_rejections": 0,
+              "candidate_warm_overruns": 0,
+              "p95_limit_ms": 525.0,
+              "timing_gate_passed": true,
+              "cutoff_gate_passed": true,
+              "failure_gate_passed": true,
+              "lower_bound_above_50_percent": false,
+              "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+              "futility": {
+                "policy": {
+                  "version": 1,
+                  "enabled": true,
+                  "minimum_pairs": 20,
+                  "check_every_pairs": 20,
+                  "alpha": 0.05,
+                  "hopeless_match_score": 0.25,
+                  "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+                },
+                "stopped": true,
+                "scheduled_pairs": 20,
+                "observed_pairs": 20,
+                "planned_looks": [
+                  20
+                ],
+                "mean_match_score": 0.025,
+                "upper_match_score": 0.2080666038589311,
+                "confidence": 0.95,
+                "alpha_per_look": 0.05,
+                "reason": "Even the corrected one-sided upper bound is below 25% match score"
+              },
+              "descriptive_pair_bootstrap_ci95": [
+                0.0,
+                0.075
+              ],
+              "interval_status": "Fixed-sample bootstrap suppressed after optional stopping; use the corrected futility bound"
+            },
+            "promotion_eligible": false,
+            "historical_import": null
+          }
+        }
+      },
+      "confirmed_across_training_seeds": false
+    }
+  },
+  "finalists": []
+}

@@ -1,0 +1,111 @@
+{
+  "version": 2,
+  "phase": 7,
+  "architectures": [
+    "XD-CNN"
+  ],
+  "recipe": "D2-W0",
+  "training_seeds": [
+    11,
+    23,
+    47
+  ],
+  "opponents": [
+    "JSETTLERS"
+  ],
+  "variants": {
+    "policy": {
+      "mode": "policy",
+      "budget_ms": 500,
+      "simulations": null,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "time500-c150": {
+      "mode": "time",
+      "budget_ms": 500,
+      "simulations": null,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "time500-c075": {
+      "mode": "time",
+      "budget_ms": 500,
+      "simulations": null,
+      "c_puct": 0.75,
+      "leaf_evaluator": "neural"
+    },
+    "time500-c300": {
+      "mode": "time",
+      "budget_ms": 500,
+      "simulations": null,
+      "c_puct": 3.0,
+      "leaf_evaluator": "neural"
+    },
+    "time100": {
+      "mode": "time",
+      "budget_ms": 100,
+      "simulations": null,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "heuristic500": {
+      "mode": "time",
+      "budget_ms": 500,
+      "simulations": null,
+      "c_puct": 1.5,
+      "leaf_evaluator": "heuristic"
+    },
+    "time2000": {
+      "mode": "time",
+      "budget_ms": 2000,
+      "simulations": null,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "sim128": {
+      "mode": "simulations",
+      "budget_ms": 500,
+      "simulations": 128,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "sim512": {
+      "mode": "simulations",
+      "budget_ms": 500,
+      "simulations": 512,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    },
+    "sim2048": {
+      "mode": "simulations",
+      "budget_ms": 500,
+      "simulations": 2048,
+      "c_puct": 1.5,
+      "leaf_evaluator": "neural"
+    }
+  },
+  "new_variants": [
+    "time500-c075",
+    "time500-c300",
+    "time100",
+    "heuristic500",
+    "time2000",
+    "sim128",
+    "sim512",
+    "sim2048"
+  ],
+  "schedule": {
+    "smoke_games": 10,
+    "total_games": 50,
+    "includes_smoke": true
+  },
+  "reuse": "Exact verified phase6 policy and 500ms/c1.5 for all three training seeds; no old games replayed or revision pooling; opponent-only scope amendment preserves compatible JSettlers configurations",
+  "screening_seed": 11,
+  "selection": "Highest feasible seed11 500ms JSettlers score, c=1.5 preferred on ties, then .75 then 3. Confirm chosen constant across seeds23/47.",
+  "promotion": "Positive paired hierarchical three-seed 500ms search-minus-policy 95% lower bound, no futility and all search gates. Report existing policy cutoffs.",
+  "fixed_simulation_timing": "Latency is measured, not a wall-clock constraint; benchmark 500ms gate retained in raw metrics but not used for diagnostic interpretation.",
+  "heuristic_control": "Same neural priors and frozen MLP opponent; ReferenceEvaluator score/resource logistic leaf value only.",
+  "final_seeds_used": false,
+  "new_training": false
+}

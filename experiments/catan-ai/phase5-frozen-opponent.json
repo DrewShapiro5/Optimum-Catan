@@ -1,0 +1,12 @@
+{
+  "checkpoint": {
+    "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+    "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+  },
+  "model_id": "MLP",
+  "seed": 11,
+  "data": "D2/W0",
+  "selected_step": 2000,
+  "run_record": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/run.json",
+  "immutable_for_architecture_comparison": true
+}

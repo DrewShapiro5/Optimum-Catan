@@ -1,0 +1,530 @@
+{
+  "H-GNN:11": {
+    "run_record": "runs/catan-ai/phase5-H-GNN-seed11-50ab1863c6ac-20261104T235212858967Z/run.json",
+    "checkpoint": {
+      "path": "runs/catan-ai/phase5-H-GNN-seed11-50ab1863c6ac-20261104T235212858967Z/best.pt",
+      "sha256": "73eb3b80794e3597c76b77967c6356df3843d9515f4668d1dde38f243904c313"
+    },
+    "parameters": 3782374,
+    "best_step": 3000,
+    "best_validation_loss": 1.261104212418326,
+    "test": {
+      "rows": 27137,
+      "nonforced": 17849,
+      "policy_nll": 0.792918080867549,
+      "top1_accuracy": 0.7161185500588269,
+      "value_bce": 0.477758825100519,
+      "brier": 0.1575293584141719,
+      "by_phase": {
+        "setup": {
+          "count": 568,
+          "nll": 1.7620408312535623,
+          "top1_accuracy": 0.47007042253521125
+        },
+        "middle": {
+          "count": 16385,
+          "nll": 0.7458713416250006,
+          "top1_accuracy": 0.7293256026853829
+        },
+        "endgame": {
+          "count": 896,
+          "nll": 1.0388992182311736,
+          "top1_accuracy": 0.6305803571428571
+        }
+      },
+      "by_family": {
+        "BUILD_CITY": {
+          "count": 357,
+          "nll": 0.9956511260539878,
+          "top1_accuracy": 0.49019607843137253
+        },
+        "BUILD_ROAD": {
+          "count": 1132,
+          "nll": 2.528095431125627,
+          "top1_accuracy": 0.21996466431095407
+        },
+        "BUILD_SETTLEMENT": {
+          "count": 659,
+          "nll": 1.8205938493219602,
+          "top1_accuracy": 0.4355083459787557
+        },
+        "BUY_DEVELOPMENT_CARD": {
+          "count": 1396,
+          "nll": 0.2052209819627013,
+          "top1_accuracy": 0.9770773638968482
+        },
+        "END_TURN": {
+          "count": 4512,
+          "nll": 0.3988201411057871,
+          "top1_accuracy": 0.8960549645390071
+        },
+        "MARITIME_TRADE": {
+          "count": 2521,
+          "nll": 1.708168219309485,
+          "top1_accuracy": 0.26378421261404206
+        },
+        "MOVE_ROBBER": {
+          "count": 2239,
+          "nll": 0.9397300259776283,
+          "top1_accuracy": 0.6114336757481018
+        },
+        "PLAY_KNIGHT_CARD": {
+          "count": 746,
+          "nll": 0.5294553130701554,
+          "top1_accuracy": 0.8203753351206434
+        },
+        "PLAY_ROAD_BUILDING": {
+          "count": 115,
+          "nll": 0.4453360275729843,
+          "top1_accuracy": 0.8782608695652174
+        },
+        "ROLL": {
+          "count": 3812,
+          "nll": 0.02203640318719977,
+          "top1_accuracy": 0.9960650577124869
+        },
+        "DISCARD_RESOURCE": {
+          "count": 257,
+          "nll": 1.1773031008382715,
+          "top1_accuracy": 0.4669260700389105
+        },
+        "PLAY_YEAR_OF_PLENTY": {
+          "count": 101,
+          "nll": 3.864378305945066,
+          "top1_accuracy": 0.0
+        },
+        "PLAY_MONOPOLY": {
+          "count": 2,
+          "nll": 8.200087308883667,
+          "top1_accuracy": 0.0
+        }
+      },
+      "calibration": [
+        {
+          "low": 0.0,
+          "high": 0.1,
+          "count": 5414,
+          "mean_probability": 0.035231819613738655,
+          "win_frequency": 0.07351311414850388
+        },
+        {
+          "low": 0.1,
+          "high": 0.2,
+          "count": 2387,
+          "mean_probability": 0.1467906434259057,
+          "win_frequency": 0.27482195224130707
+        },
+        {
+          "low": 0.2,
+          "high": 0.3,
+          "count": 1962,
+          "mean_probability": 0.2473067741662598,
+          "win_frequency": 0.3521916411824669
+        },
+        {
+          "low": 0.3,
+          "high": 0.4,
+          "count": 1618,
+          "mean_probability": 0.34866342445828563,
+          "win_frequency": 0.4196538936959209
+        },
+        {
+          "low": 0.4,
+          "high": 0.5,
+          "count": 1535,
+          "mean_probability": 0.4498957649116019,
+          "win_frequency": 0.48534201954397393
+        },
+        {
+          "low": 0.5,
+          "high": 0.6,
+          "count": 1457,
+          "mean_probability": 0.5502578941779179,
+          "win_frequency": 0.574468085106383
+        },
+        {
+          "low": 0.6,
+          "high": 0.7,
+          "count": 1621,
+          "mean_probability": 0.6508174234889746,
+          "win_frequency": 0.6323257248611968
+        },
+        {
+          "low": 0.7,
+          "high": 0.8,
+          "count": 1857,
+          "mean_probability": 0.7508085047165167,
+          "win_frequency": 0.678513731825525
+        },
+        {
+          "low": 0.8,
+          "high": 0.9,
+          "count": 2365,
+          "mean_probability": 0.8518985757868083,
+          "win_frequency": 0.7484143763213531
+        },
+        {
+          "low": 0.9,
+          "high": 1.0,
+          "count": 6921,
+          "mean_probability": 0.9693514463994876,
+          "win_frequency": 0.9151856668111544
+        }
+      ],
+      "selection_loss": 1.270676905968068
+    },
+    "training_seconds": 2079.8206037920027
+  },
+  "MLP:11": {
+    "run_record": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/run.json",
+    "checkpoint": {
+      "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+      "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+    },
+    "parameters": 546893,
+    "best_step": 2000,
+    "best_validation_loss": 1.4486395844596678,
+    "test": {
+      "rows": 27137,
+      "nonforced": 17849,
+      "policy_nll": 0.9956529704510875,
+      "top1_accuracy": 0.6298392066782453,
+      "value_bce": 0.5802185245872538,
+      "brier": 0.18851945511235663,
+      "by_phase": {
+        "setup": {
+          "count": 568,
+          "nll": 2.1426704395824756,
+          "top1_accuracy": 0.2904929577464789
+        },
+        "middle": {
+          "count": 16385,
+          "nll": 0.9449720320412034,
+          "top1_accuracy": 0.6452242905096125
+        },
+        "endgame": {
+          "count": 896,
+          "nll": 1.1953194989224099,
+          "top1_accuracy": 0.5636160714285714
+        }
+      },
+      "by_family": {
+        "BUILD_CITY": {
+          "count": 357,
+          "nll": 1.1273481250644064,
+          "top1_accuracy": 0.4341736694677871
+        },
+        "BUILD_ROAD": {
+          "count": 1132,
+          "nll": 2.865172446827164,
+          "top1_accuracy": 0.17137809187279152
+        },
+        "BUILD_SETTLEMENT": {
+          "count": 659,
+          "nll": 2.1872868342537077,
+          "top1_accuracy": 0.3232169954476479
+        },
+        "BUY_DEVELOPMENT_CARD": {
+          "count": 1396,
+          "nll": 0.23444909489257287,
+          "top1_accuracy": 0.9734957020057307
+        },
+        "END_TURN": {
+          "count": 4512,
+          "nll": 0.3679199812682808,
+          "top1_accuracy": 0.910904255319149
+        },
+        "MARITIME_TRADE": {
+          "count": 2521,
+          "nll": 1.7008473862735396,
+          "top1_accuracy": 0.2475208250694169
+        },
+        "MOVE_ROBBER": {
+          "count": 2239,
+          "nll": 1.7837699116634014,
+          "top1_accuracy": 0.26083072800357304
+        },
+        "PLAY_KNIGHT_CARD": {
+          "count": 746,
+          "nll": 1.2422860103382183,
+          "top1_accuracy": 0.07640750670241286
+        },
+        "PLAY_ROAD_BUILDING": {
+          "count": 115,
+          "nll": 0.7206145618272864,
+          "top1_accuracy": 0.8260869565217391
+        },
+        "ROLL": {
+          "count": 3812,
+          "nll": 0.1772684935413903,
+          "top1_accuracy": 0.9818992654774397
+        },
+        "DISCARD_RESOURCE": {
+          "count": 257,
+          "nll": 1.2259510723069484,
+          "top1_accuracy": 0.42023346303501946
+        },
+        "PLAY_YEAR_OF_PLENTY": {
+          "count": 101,
+          "nll": 3.9170323244415886,
+          "top1_accuracy": 0.0
+        },
+        "PLAY_MONOPOLY": {
+          "count": 2,
+          "nll": 9.526649236679077,
+          "top1_accuracy": 0.0
+        }
+      },
+      "calibration": [
+        {
+          "low": 0.0,
+          "high": 0.1,
+          "count": 6623,
+          "mean_probability": 0.028131520173539256,
+          "win_frequency": 0.1511399667824249
+        },
+        {
+          "low": 0.1,
+          "high": 0.2,
+          "count": 2241,
+          "mean_probability": 0.14718296113874912,
+          "win_frequency": 0.3855421686746988
+        },
+        {
+          "low": 0.2,
+          "high": 0.3,
+          "count": 1713,
+          "mean_probability": 0.24883107123358236,
+          "win_frequency": 0.39346176298890834
+        },
+        {
+          "low": 0.3,
+          "high": 0.4,
+          "count": 1482,
+          "mean_probability": 0.35019133134409486,
+          "win_frequency": 0.48717948717948717
+        },
+        {
+          "low": 0.4,
+          "high": 0.5,
+          "count": 1497,
+          "mean_probability": 0.44910514506006843,
+          "win_frequency": 0.5644622578490314
+        },
+        {
+          "low": 0.5,
+          "high": 0.6,
+          "count": 1368,
+          "mean_probability": 0.5516795671125602,
+          "win_frequency": 0.5614035087719298
+        },
+        {
+          "low": 0.6,
+          "high": 0.7,
+          "count": 1444,
+          "mean_probability": 0.6497186380657793,
+          "win_frequency": 0.53601108033241
+        },
+        {
+          "low": 0.7,
+          "high": 0.8,
+          "count": 1489,
+          "mean_probability": 0.750155038205948,
+          "win_frequency": 0.5950302216252519
+        },
+        {
+          "low": 0.8,
+          "high": 0.9,
+          "count": 2021,
+          "mean_probability": 0.853440865675215,
+          "win_frequency": 0.6887679366650173
+        },
+        {
+          "low": 0.9,
+          "high": 1.0,
+          "count": 7259,
+          "mean_probability": 0.9762325559721323,
+          "win_frequency": 0.8911695825871332
+        }
+      ],
+      "selection_loss": 1.5758714950383412
+    },
+    "training_seconds": 71.55624954100495
+  },
+  "XD-CNN:11": {
+    "run_record": "runs/catan-ai/phase5-XD-CNN-seed11-478a003940ec-20261104T232359576222Z/run.json",
+    "checkpoint": {
+      "path": "runs/catan-ai/phase5-XD-CNN-seed11-478a003940ec-20261104T232359576222Z/best.pt",
+      "sha256": "f2b477266b58cbcba820c28e305f662626c0519f4b8aa7ebc729764800dd4b70"
+    },
+    "parameters": 1268390,
+    "best_step": 14000,
+    "best_validation_loss": 1.0904361408448917,
+    "test": {
+      "rows": 27137,
+      "nonforced": 17849,
+      "policy_nll": 0.6601909020944534,
+      "top1_accuracy": 0.7676620538965768,
+      "value_bce": 0.4874553011588695,
+      "brier": 0.15510577896025277,
+      "by_phase": {
+        "setup": {
+          "count": 568,
+          "nll": 1.507034550250416,
+          "top1_accuracy": 0.5123239436619719
+        },
+        "middle": {
+          "count": 16385,
+          "nll": 0.6212449095618044,
+          "top1_accuracy": 0.7809581934696369
+        },
+        "endgame": {
+          "count": 896,
+          "nll": 0.8355511499373408,
+          "top1_accuracy": 0.6863839285714286
+        }
+      },
+      "by_family": {
+        "BUILD_CITY": {
+          "count": 357,
+          "nll": 1.0458831365744607,
+          "top1_accuracy": 0.47058823529411764
+        },
+        "BUILD_ROAD": {
+          "count": 1132,
+          "nll": 2.3029597479547292,
+          "top1_accuracy": 0.2756183745583039
+        },
+        "BUILD_SETTLEMENT": {
+          "count": 659,
+          "nll": 1.6455913950040462,
+          "top1_accuracy": 0.44461305007587254
+        },
+        "BUY_DEVELOPMENT_CARD": {
+          "count": 1396,
+          "nll": 0.2981053821336916,
+          "top1_accuracy": 0.921919770773639
+        },
+        "END_TURN": {
+          "count": 4512,
+          "nll": 0.31971397213902036,
+          "top1_accuracy": 0.910904255319149
+        },
+        "MARITIME_TRADE": {
+          "count": 2521,
+          "nll": 1.2456098245940763,
+          "top1_accuracy": 0.5374851249504164
+        },
+        "MOVE_ROBBER": {
+          "count": 2239,
+          "nll": 0.8785827282338655,
+          "top1_accuracy": 0.6409111210361769
+        },
+        "PLAY_KNIGHT_CARD": {
+          "count": 746,
+          "nll": 0.2324156574064965,
+          "top1_accuracy": 0.9168900804289544
+        },
+        "PLAY_ROAD_BUILDING": {
+          "count": 115,
+          "nll": 0.17249712380833682,
+          "top1_accuracy": 0.9391304347826087
+        },
+        "ROLL": {
+          "count": 3812,
+          "nll": 0.01231204879624148,
+          "top1_accuracy": 0.9963273871983211
+        },
+        "DISCARD_RESOURCE": {
+          "count": 257,
+          "nll": 0.9195104540554002,
+          "top1_accuracy": 0.5719844357976653
+        },
+        "PLAY_YEAR_OF_PLENTY": {
+          "count": 101,
+          "nll": 2.564875293486189,
+          "top1_accuracy": 0.04950495049504951
+        },
+        "PLAY_MONOPOLY": {
+          "count": 2,
+          "nll": 8.709516525268555,
+          "top1_accuracy": 0.0
+        }
+      },
+      "calibration": [
+        {
+          "low": 0.0,
+          "high": 0.1,
+          "count": 6248,
+          "mean_probability": 0.02552892726925935,
+          "win_frequency": 0.08482714468629962
+        },
+        {
+          "low": 0.1,
+          "high": 0.2,
+          "count": 1913,
+          "mean_probability": 0.1466592106280748,
+          "win_frequency": 0.29848405645582854
+        },
+        {
+          "low": 0.2,
+          "high": 0.3,
+          "count": 1535,
+          "mean_probability": 0.24987392472133574,
+          "win_frequency": 0.3485342019543974
+        },
+        {
+          "low": 0.3,
+          "high": 0.4,
+          "count": 1329,
+          "mean_probability": 0.34932574031046226,
+          "win_frequency": 0.4123401053423627
+        },
+        {
+          "low": 0.4,
+          "high": 0.5,
+          "count": 1436,
+          "mean_probability": 0.45164327587008807,
+          "win_frequency": 0.47284122562674097
+        },
+        {
+          "low": 0.5,
+          "high": 0.6,
+          "count": 1564,
+          "mean_probability": 0.5513344697863855,
+          "win_frequency": 0.5812020460358056
+        },
+        {
+          "low": 0.6,
+          "high": 0.7,
+          "count": 1513,
+          "mean_probability": 0.649714031009901,
+          "win_frequency": 0.5690680766688698
+        },
+        {
+          "low": 0.7,
+          "high": 0.8,
+          "count": 1452,
+          "mean_probability": 0.7506759297256628,
+          "win_frequency": 0.6136363636363636
+        },
+        {
+          "low": 0.8,
+          "high": 0.9,
+          "count": 2037,
+          "mean_probability": 0.8530153013879198,
+          "win_frequency": 0.7083946980854198
+        },
+        {
+          "low": 0.9,
+          "high": 1.0,
+          "count": 8110,
+          "mean_probability": 0.9788037043758444,
+          "win_frequency": 0.9159062885326757
+        }
+      ],
+      "selection_loss": 1.147646203253323
+    },
+    "training_seconds": 1609.5251124159986
+  }
+}

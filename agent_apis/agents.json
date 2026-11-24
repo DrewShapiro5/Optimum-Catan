@@ -1,0 +1,259 @@
+{
+  "version": 2,
+  "agents": [
+    {
+      "key": "JSETTLERS",
+      "name": "JSettlers",
+      "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+      "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+      "protocol": "catanotron-observation-v1",
+      "capabilities": [
+        "decide",
+        "sync"
+      ],
+      "sync_endpoint": "/api/agents/JSETTLERS/sync"
+    },
+    {
+      "key": "CNN_V2_BEST_SEARCH",
+      "name": "CNN v2 best (self-policy) \u2014 search",
+      "description": "Latest v2 self-policy multi-cohort XD-CNN W4 best checkpoint with self-policy MCTS. Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:V2BestCnnSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "TRANSFORMER_V2_BEST_SEARCH",
+      "name": "Transformer v2 best (self-policy) \u2014 search",
+      "description": "Latest v2 self-policy multi-cohort TypedExphormer W4 best checkpoint with self-policy MCTS. Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:V2BestTransformerSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "CNN_LATEST_SEARCH",
+      "name": "CNN latest best \u2014 search",
+      "description": "Latest multi-cohort XD-CNN W4 (pure l=1 MCTS + sliding replay). Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:LatestCnnSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "TRANSFORMER_LATEST_SEARCH",
+      "name": "Transformer latest best \u2014 search",
+      "description": "Latest multi-cohort TypedExphormer W4 (pure l=1 MCTS + sliding replay). Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:LatestTransformerSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "CNN_BEST_SEARCH",
+      "name": "CNN all-time best (cohort 6) \u2014 search",
+      "description": "Pinned cohort-006 XD-CNN W4 best checkpoint (lowest multi-cohort val/test loss). Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:BestCnnSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "TRANSFORMER_BEST_SEARCH",
+      "name": "Transformer all-time best (cohort 6) \u2014 search",
+      "description": "Pinned cohort-006 TypedExphormer W4 best checkpoint (lowest multi-cohort val/test loss). Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.latest_web:BestTransformerSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "default_mcts_opponent": "self-policy",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "STOCHASTIC_REFERENCE",
+      "name": "Stochastic reference (phase 4)",
+      "description": "Diagnostic root-sampled PUCT with exact chance classes, a deterministic reference value and frozen heuristic opponent. No learned components or strength claim.",
+      "implementation": "agent_apis.stochastic_search:StochasticReferencePlayer",
+      "protocol": "catan-ai-schema-3",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide"
+      ]
+    },
+    {
+      "key": "NEURAL_POLICY",
+      "name": "Neural policy (phase 5)",
+      "description": "Verified D2/W0 PyTorch policy/value checkpoint with audited observations and a server-configured default model.",
+      "implementation": "agent_apis.neural.provider:NeuralPolicyPlayer",
+      "protocol": "catan-ai-schema-3",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "NEURAL_SEARCH",
+      "name": "Neural stochastic search (phase 5)",
+      "description": "Root-sampled PUCT with a verified policy/value checkpoint and one frozen seed-11 D2/W0 MLP opponent.",
+      "implementation": "agent_apis.neural.provider:NeuralSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "PHASE7_SEARCH",
+      "name": "Measured neural search (phase 7)",
+      "description": "XD-CNN search budget comparisons with subsystem telemetry and an explicit neural-prior/heuristic-value control.",
+      "implementation": "agent_apis.neural.phase7_runtime:Phase7SearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "CNN_INSPECT_SEARCH",
+      "name": "CNN best measured \u2014 search (500 ms)",
+      "description": "XD-CNN W4 seed23: 20/50 historical search wins vs JSettlers. Two-player inspection; friendly robber supported, strength under that rule unconfirmed.",
+      "implementation": "agent_apis.neural.inspection:InspectionSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "CNN_INSPECT_POLICY",
+      "name": "CNN best measured \u2014 policy",
+      "description": "XD-CNN W4 seed23: 20/50 historical search wins vs JSettlers. Two-player inspection; friendly robber supported, strength under that rule unconfirmed.",
+      "implementation": "agent_apis.neural.inspection:InspectionPolicyPlayer",
+      "protocol": "catan-ai-schema-3",
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    },
+    {
+      "key": "CNN_MIXED_SEARCH",
+      "name": "CNN mixed cohort \u2014 search (1000 ms)",
+      "description": "Mixed-trained XD-CNN W4 with 1-second search. Two-player, 15 VP; visible-point friendly robber supported.",
+      "implementation": "agent_apis.neural.mixed_web:MixedCnnSearchPlayer",
+      "protocol": "catan-ai-schema-3",
+      "searchable": true,
+      "default_simulations": 128,
+      "supported_rules": {
+        "players": 2,
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9
+      },
+      "capabilities": [
+        "decide",
+        "checkpoint"
+      ]
+    }
+  ]
+}

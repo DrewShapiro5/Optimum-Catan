@@ -1,0 +1,21 @@
+.DS_Store
+.conda/
+.cache/
+.bootstrap/
+.python/
+.venv/
+__pycache__/
+data/
+screenshots/
+integrations/jsettlers/build/
+integrations/jsettlers/lib/
+*.egg-info/
+integrations/jsettlers/upstream/
+runs/catan-ai/
+agent_apis/neural/native_worker/target/
+framework/ui/node_modules/
+framework/ui/dist/
+framework/ui/build/
+
+# Local experiment build caches and installed export dependencies
+.ipynb_checkpoints/

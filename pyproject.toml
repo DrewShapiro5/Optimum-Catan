@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "catanotron-agent-apis"
+version = "0.1.0"
+requires-python = ">=3.11"
+[project.optional-dependencies]
+dataset = ["gymnasium==0.29.1", "numpy"]
+experiment = ["torch==2.15.0", "jsonschema==4.26.0"]
+native = ["torch==2.15.0", "onnx==1.23.2", "jsonschema==4.26.0"]
+[tool.setuptools.packages.find]
+include = ["agent_apis*"]
+namespaces = false
+[tool.setuptools.package-data]
+agent_apis = ["agents.json", "jsettlers/*.java", "neural/native_worker/README.md", "neural/native_worker/Cargo.toml", "neural/native_worker/Cargo.lock", "neural/native_worker/build.rs", "neural/native_worker/build.sh", "neural/native_worker/src/*.rs", "neural/native_worker/native/*", "neural/native_worker/runtime/*"]

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "phase": 6,
+  "architectures": [
+    "XD-CNN",
+    "TRANSFORMER"
+  ],
+  "screening_architecture": "XD-CNN",
+  "screening_seed": 11,
+  "confirmation_seeds": [
+    11,
+    23,
+    47
+  ],
+  "recipes": [
+    "D0-W0",
+    "D1-W0",
+    "D2-W0",
+    "D2-W1",
+    "D2-W2",
+    "D2-W3-V0",
+    "D2-W3-V1",
+    "D2-W4"
+  ],
+  "validation_opponents": [
+    "RANDOM",
+    "JSETTLERS"
+  ],
+  "modes": [
+    "policy",
+    "search"
+  ],
+  "search_budget_ms": 500,
+  "schedule": {
+    "smoke_games": 10,
+    "total_games": 50,
+    "includes_smoke": true
+  },
+  "training_updates": 20000,
+  "batch_size": 256,
+  "validation_distribution": "common unweighted complete D2",
+  "selection": "Confirm D2-W0 plus highest feasible seed11 JSettlers search challenger. Ties use recipe order. Retain uniform unless challenger paired three-seed search improvement CI excludes zero on both encoders.",
+  "retrospective_progress": "zero-based actor decision ordinal / final ordinal, including forced decisions; training metadata only",
+  "normalization": "W3 policy mean 1 over training nonforced rows, V1 mean 1 over all training rows; W2/W4 value uses 1/(N*q), once only",
+  "family_cap": "50% uniform + 50% family-balanced water filling; extra stream capped at 9x, total capped at 5x",
+  "final_seeds_used": false,
+  "phase5_three_seed_confirmation_complete": false
+}

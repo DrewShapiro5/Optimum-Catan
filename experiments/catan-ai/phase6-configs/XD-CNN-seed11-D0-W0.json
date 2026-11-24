@@ -1,0 +1,156 @@
+{
+  "contract_version": 1,
+  "experiment": "phase6-D0-W0",
+  "stage": "supervised-training",
+  "rules": {
+    "players": 2,
+    "colors": [
+      "BLUE",
+      "RED"
+    ],
+    "map": "BASE",
+    "vps_to_win": 15,
+    "discard_limit": 9,
+    "friendly_robber": false,
+    "player_trading": false
+  },
+  "data": {
+    "corpora": [
+      "data/jsettlers-corpora/full-250"
+    ],
+    "source_schema": 2,
+    "source_features": 633,
+    "model_schema": 3,
+    "view": "complete-decisions",
+    "composition": "D0",
+    "weighting": "W0",
+    "value_weighting": "V0"
+  },
+  "actions": {
+    "count": 332,
+    "coordinates": "absolute",
+    "victim_colors": "absolute",
+    "normalization": "global-legal-softmax"
+  },
+  "value": {
+    "perspective": "decision-actor",
+    "range": [
+      0,
+      1
+    ],
+    "label_conversion": "(value_target + 1) / 2"
+  },
+  "randomness": {
+    "streams": [
+      "board",
+      "simulator",
+      "search",
+      "training",
+      "evaluation"
+    ],
+    "screening_seed": 11,
+    "confirmation_seeds": [
+      11,
+      23,
+      47
+    ]
+  },
+  "runtime": {
+    "framework": "pytorch",
+    "torch_version": "2.15.0",
+    "evaluation_device": "cpu",
+    "benchmark": {
+      "warmup": 10,
+      "repeats": 100,
+      "batch_sizes": [
+        1,
+        32
+      ]
+    },
+    "cpu_threads": 6,
+    "training_device": "mps",
+    "precision": "float32",
+    "device_preflight_sha256": "088f46fa4cfb45057d5b7afc7e8f6ec2463b6ec2beeddc694ec1c733e9cfd880"
+  },
+  "model": {
+    "id": "XD-CNN",
+    "topology_sha256": "a26a7b034d686fb9807ce3189910178dac176f8d03a94109255f30e332534ed7"
+  },
+  "training": {
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "batch_size": 256,
+    "gradient_clip": 1.0,
+    "warmup_updates": 500,
+    "max_updates": 20000,
+    "minimum_learning_rate": 3e-05,
+    "validation_interval": 1000,
+    "policy_loss": "masked-cross-entropy-nonforced",
+    "value_loss": "binary-cross-entropy",
+    "loss_coefficients": [
+      1.0,
+      1.0
+    ],
+    "shuffle_buffer": 8192,
+    "augmentation": "D6-full-board-with-typed-edge-ports",
+    "categorical_dice": "one-hot-13",
+    "checkpoint_selection": "lowest full unweighted validation policy-NLL plus value-BCE; earliest tie",
+    "augmentation_audit_sha256": "4a9fbd6344d8df5773cbd5363003c88fcfcb5a69f73e2f699b23c0a87db7db8a",
+    "validation_distribution": "common full unweighted D2 validation; no test-based selection"
+  },
+  "search": {
+    "c_puct": 1.5,
+    "chance": "true-probability-merged",
+    "opponent": "frozen-MLP-D2-W0",
+    "root_selection": [
+      "visits",
+      "mean_value",
+      "stable_action_id"
+    ],
+    "max_root_depth": 4,
+    "max_actions": 128,
+    "opponent_checkpoint": null
+  },
+  "evaluation": {
+    "opponent": "JSETTLERS",
+    "strategy": "SMART",
+    "primary_budget_ms": 500,
+    "budgets_ms": [
+      100,
+      500,
+      2000
+    ],
+    "simulation_budgets": [
+      128,
+      512,
+      2048
+    ],
+    "smoke_pairs": 20,
+    "screening_pairs": 100,
+    "confirmation_pairs": 500,
+    "max_turns": 1000,
+    "max_actions": 10000,
+    "cutoff_score": 0.5,
+    "paired_seats": true,
+    "final_seed_list": null,
+    "seed_set": "tuning",
+    "tier": "smoke",
+    "mode": "policy",
+    "budget_ms": 500,
+    "simulations": null,
+    "bootstrap_repeats": 5000,
+    "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+    "protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e"
+  },
+  "seed": 11,
+  "candidate": {
+    "key": "NEURAL_POLICY",
+    "checkpoint": null
+  },
+  "opponent": {
+    "key": "JSETTLERS",
+    "checkpoint": null
+  },
+  "phase": 6
+}

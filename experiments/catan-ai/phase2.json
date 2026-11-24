@@ -1,0 +1,128 @@
+{
+  "contract_version": 1,
+  "experiment": "phase2-observation-audit",
+  "stage": "audit",
+  "rules": {
+    "players": 2,
+    "colors": [
+      "BLUE",
+      "RED"
+    ],
+    "map": "BASE",
+    "vps_to_win": 15,
+    "discard_limit": 9,
+    "friendly_robber": false,
+    "player_trading": false
+  },
+  "data": {
+    "corpora": [
+      "data/jsettlers-corpora/full-250",
+      "data/jsettlers-corpora/downsampled"
+    ],
+    "source_schema": 2,
+    "source_features": 633,
+    "model_schema": 3,
+    "view": "retained-and-complete",
+    "composition": "D2",
+    "weighting": "W0"
+  },
+  "actions": {
+    "count": 332,
+    "coordinates": "absolute",
+    "victim_colors": "absolute",
+    "normalization": "global-legal-softmax"
+  },
+  "value": {
+    "perspective": "decision-actor",
+    "range": [
+      0,
+      1
+    ],
+    "label_conversion": "(value_target + 1) / 2"
+  },
+  "randomness": {
+    "streams": [
+      "board",
+      "simulator",
+      "search",
+      "training",
+      "evaluation"
+    ],
+    "screening_seed": 11,
+    "confirmation_seeds": [
+      11,
+      23,
+      47
+    ]
+  },
+  "runtime": {
+    "framework": "pytorch",
+    "torch_version": "2.15.0",
+    "evaluation_device": null,
+    "benchmark": {
+      "warmup": 10,
+      "repeats": 100,
+      "batch_sizes": [
+        1,
+        32
+      ]
+    }
+  },
+  "model": null,
+  "training": {
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "batch_size": 256,
+    "gradient_clip": 1.0,
+    "warmup_updates": 500,
+    "max_updates": 20000,
+    "minimum_learning_rate": 3e-05,
+    "validation_interval": 1000,
+    "policy_loss": "masked-cross-entropy-nonforced",
+    "value_loss": "binary-cross-entropy",
+    "loss_coefficients": [
+      1.0,
+      1.0
+    ]
+  },
+  "search": {
+    "c_puct": 1.5,
+    "chance": "true-probability-merged",
+    "opponent": "frozen-MLP-D2-W0",
+    "root_selection": [
+      "visits",
+      "mean_value",
+      "stable_action_id"
+    ]
+  },
+  "evaluation": {
+    "opponent": "JSETTLERS",
+    "strategy": "SMART",
+    "primary_budget_ms": 500,
+    "budgets_ms": [
+      100,
+      500,
+      2000
+    ],
+    "simulation_budgets": [
+      128,
+      512,
+      2048
+    ],
+    "smoke_pairs": 20,
+    "screening_pairs": 100,
+    "confirmation_pairs": 500,
+    "max_turns": 1000,
+    "max_actions": 10000,
+    "cutoff_score": 0.5,
+    "paired_seats": true,
+    "final_seed_list": null
+  },
+  "audit": {
+    "all_recorded_actions": true,
+    "both_perspectives": true,
+    "ledger": "exact-public-bank-conservation",
+    "require_zero_mismatches": true
+  }
+}

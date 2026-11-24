@@ -1,0 +1,128 @@
+{
+  "phase": 8,
+  "scope": "Bounded phase8 inference-cache correctness/throughput and value/opponent diagnostics; full chance allocation sweep deferred",
+  "positions": [
+    {
+      "corpus": "data/jsettlers-corpora/full-250",
+      "file": "game-0006.jsonl.gz",
+      "source_sha256": "562abb3a10b47855399b001c5db4f2d8298809d9e340f11e21903e5cd6f873b6",
+      "game_id": "69758737-07f0-4ebb-9a52-826aec22ea3d",
+      "step": 5,
+      "stratum": "setup",
+      "rank": "007b391eeeca92f9aef75ac9348f544debb01c5a6435869762b456714fe1277d"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0525.jsonl.gz",
+      "source_sha256": "f6b21fba6d33b00c8622edb42c5932cde4ce40afbd057bf1002da82ba52471e5",
+      "game_id": "56894e90-875a-4226-be5a-691e09baa6ef",
+      "step": 2,
+      "stratum": "setup",
+      "rank": "00f82a93dfc3abb856c029453b68f03f2407f0c18f4f8282a1ae91cba582bda0"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0296.jsonl.gz",
+      "source_sha256": "ee1760d6f0d8515be54fbe3676f405ed1303a102f07925de6e9ad808b00643d2",
+      "game_id": "700267f0-7c50-41ed-a524-36a99a1929e1",
+      "step": 315,
+      "stratum": "middle",
+      "rank": "000423fcad4bbc6f53fd4053f2d2c80d38930da876c53c0c6b6e2b491ad8b616"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-1083.jsonl.gz",
+      "source_sha256": "e8f9c1d5c21745fb7e01ebb5307c23e831ed328e2f84eab7cf16edf63f1f53b3",
+      "game_id": "2b263500-0b01-4c01-8271-c5f790d963b5",
+      "step": 358,
+      "stratum": "middle",
+      "rank": "000c78361c4591e4ae75ee0f5e731fadca0e25760a71f05a7b082f48212105a4"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0484.jsonl.gz",
+      "source_sha256": "f5f7744e6eb5b6bfba6899686e78bca4b74de7e8c899b870bd137f7994ffcbc8",
+      "game_id": "293d8e32-ae4f-4ed6-9f07-0576f2b9fddc",
+      "step": 448,
+      "stratum": "endgame",
+      "rank": "0036db0b9e25733bf91ca7a14252bae57cdd9aba7c53c1ee2df156131e29714c"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0484.jsonl.gz",
+      "source_sha256": "f5f7744e6eb5b6bfba6899686e78bca4b74de7e8c899b870bd137f7994ffcbc8",
+      "game_id": "293d8e32-ae4f-4ed6-9f07-0576f2b9fddc",
+      "step": 445,
+      "stratum": "endgame",
+      "rank": "00978ec09d66c46d81391b40eade9c1608f53cfdeb0dac97589989810f641a3b"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0455.jsonl.gz",
+      "source_sha256": "b84d1cd2b15fb669f3f40ad901530354c9209453668d1b3203d35b2a61a6979c",
+      "game_id": "d77ea24c-6b59-43b6-96d9-70c1a2c10351",
+      "step": 228,
+      "stratum": "robber",
+      "rank": "000d431768100edfc1171aaeb1bd97a9735f1bde91068042218ea59a16f10c36"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0290.jsonl.gz",
+      "source_sha256": "feb5fd32ba8d9ef625200b5425833046a2009395df8f7394d2db4bd4f0c3ad6b",
+      "game_id": "daefae67-baae-4c23-af62-7e53351e5008",
+      "step": 120,
+      "stratum": "robber",
+      "rank": "00269ab23dd1c7cf735131c8145f82d3d1a5595ba2f2d11be29bc1e49e237836"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0460.jsonl.gz",
+      "source_sha256": "abec37de71f53f7f568cbf250ac690f3d92fa34e257bb06e809608165e5a5f77",
+      "game_id": "55dadd7b-bfb9-46a3-9bf6-fbe8be15aacc",
+      "step": 223,
+      "stratum": "discard",
+      "rank": "0027ab2aa6bb14c4fbc10df155b4229d27f571eb8254a7b01f1d7d29af3a1f21"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-1249.jsonl.gz",
+      "source_sha256": "955a198734f2de5d05c7e6e8cba67e415b7fcf0adc5d88ceb0d142f6628ffe73",
+      "game_id": "bfa52e16-4c3f-4fb3-b5a2-e0013196fe24",
+      "step": 361,
+      "stratum": "discard",
+      "rank": "00ea4f3ccec6051094f9438864e30e1530d90e6a76f9be416d5497f42746e2da"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/full-250",
+      "file": "game-0108.jsonl.gz",
+      "source_sha256": "b84eaff38ecf571e62981a0042842f959a4b89a035a4edd9f542c6f5d26a461a",
+      "game_id": "f3672b69-5f90-4d1a-b281-5f7a2c651c3f",
+      "step": 138,
+      "stratum": "free-road",
+      "rank": "03bc6fe45eb37ff56d756ef45029027dc20f43a5cedd1c3180e7a4a0c3d765e4"
+    },
+    {
+      "corpus": "data/jsettlers-corpora/downsampled",
+      "file": "game-0692.jsonl.gz",
+      "source_sha256": "af18901a392c31bed9e1629919bcb94f158c289eca6eb549f0fd0f1be407e276",
+      "game_id": "e9143b5d-9fd5-43d6-b7e5-cd05da8cb0f7",
+      "step": 142,
+      "stratum": "free-road",
+      "rank": "045da3d46c9e70d53587b0b2b106e53e6af4e70b50534a606c82aa599daf18b7"
+    }
+  ],
+  "budget_ms": 500,
+  "fixed_simulation_correctness_check": 16,
+  "timing_repeats": 2,
+  "checkpoint": {
+    "path": "runs/catan-ai/phase5-XD-CNN-seed11-478a003940ec-20261104T232359576222Z/best.pt",
+    "sha256": "f2b477266b58cbcba820c28e305f662626c0519f4b8aa7ebc729764800dd4b70"
+  },
+  "frozen_opponent": {
+    "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+    "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+  },
+  "no_new_games": true,
+  "promotion": "No installation/promotion from position timing alone; retain C0/c=1.5",
+  "final_seeds_used": false
+}

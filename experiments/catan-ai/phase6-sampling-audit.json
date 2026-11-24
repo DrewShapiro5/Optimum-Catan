@@ -1,0 +1,242 @@
+{
+  "cache_manifest_sha256": "763efb9c167d7be207136f2470a87198ce6f7250ff5de131f31701b48f61afe0",
+  "recipes": {
+    "D0-W0": {
+      "recipe": "D0-W0",
+      "unique_games": 220,
+      "available_decisions": 85773,
+      "probabilities_sha256": "3c830627092970dfff80ca6bd10073ad78e2e0e0872712ea6855e6ec006c69c5",
+      "maximum_relative_sampling_probability": 1.0,
+      "expected_phase_proportions": {
+        "setup": 0.020519277628158042,
+        "middle": 0.9433621302740958,
+        "endgame": 0.03611859209774638
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.01245147074254136,
+        "BUILD_ROAD": 0.04279901600736828,
+        "BUILD_SETTLEMENT": 0.02376039079896937,
+        "BUY_DEVELOPMENT_CARD": 0.05156634372121764,
+        "DISCARD_RESOURCE": 0.008522495423967916,
+        "END_TURN": 0.32432117332960253,
+        "MARITIME_TRADE": 0.09156727641565526,
+        "MOVE_ROBBER": 0.08243852960721904,
+        "PLAY_KNIGHT_CARD": 0.0274212164667203,
+        "PLAY_MONOPOLY": 0.00015156284611707646,
+        "PLAY_ROAD_BUILDING": 0.0042087836498665085,
+        "PLAY_YEAR_OF_PLENTY": 0.003928975318573445,
+        "ROLL": 0.3268627656721812
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 0.9999999999999759
+    },
+    "D1-W0": {
+      "recipe": "D1-W0",
+      "unique_games": 1118,
+      "available_decisions": 142723,
+      "probabilities_sha256": "ae527fb8e915f040754bf576c3ef0d1b2eb012139ec1d7be79350e7d1fea591e",
+      "maximum_relative_sampling_probability": 1.0,
+      "expected_phase_proportions": {
+        "setup": 0.06266684416667251,
+        "middle": 0.864149436320705,
+        "endgame": 0.07318371951262237
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.014727829431836493,
+        "BUILD_ROAD": 0.06521723898740918,
+        "BUILD_SETTLEMENT": 0.04784092262634613,
+        "BUY_DEVELOPMENT_CARD": 0.046103290990239826,
+        "DISCARD_RESOURCE": 0.008618092388753038,
+        "END_TURN": 0.3070072798357658,
+        "MARITIME_TRADE": 0.0960812202658296,
+        "MOVE_ROBBER": 0.07500543009886285,
+        "PLAY_KNIGHT_CARD": 0.02457207317671293,
+        "PLAY_MONOPOLY": 0.00020319079615759204,
+        "PLAY_ROAD_BUILDING": 0.003944704077128424,
+        "PLAY_YEAR_OF_PLENTY": 0.003727500122615136,
+        "ROLL": 0.306951227202343
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 1.000000000000044
+    },
+    "D2-W0": {
+      "recipe": "D2-W0",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "293f0b76dee66d55e4e86889f15ddc04ac4f0a223066ac498a940d1fc176ddf1",
+      "maximum_relative_sampling_probability": 0.9999999999999999,
+      "expected_phase_proportions": {
+        "setup": 0.02072913528171135,
+        "middle": 0.9430945372795323,
+        "endgame": 0.03617632743875587
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.012721626069019859,
+        "BUILD_ROAD": 0.04198901429995132,
+        "BUILD_SETTLEMENT": 0.023851020928453884,
+        "BUY_DEVELOPMENT_CARD": 0.05240457042204555,
+        "DISCARD_RESOURCE": 0.009265997635988593,
+        "END_TURN": 0.32353581940806997,
+        "MARITIME_TRADE": 0.09144320578487494,
+        "MOVE_ROBBER": 0.08257816302408044,
+        "PLAY_KNIGHT_CARD": 0.027693698287250552,
+        "PLAY_MONOPOLY": 0.0001251535448582752,
+        "PLAY_ROAD_BUILDING": 0.004299256031705563,
+        "PLAY_YEAR_OF_PLENTY": 0.003981736853083643,
+        "ROLL": 0.32611073771061716
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 1.0000000000000844
+    },
+    "D2-W1": {
+      "recipe": "D2-W1",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "63ccfb4038b64e2b04969f8dc9a081b4db535811075fbb8c89fa6b126e66d21f",
+      "maximum_relative_sampling_probability": 2.020577133812249,
+      "expected_phase_proportions": {
+        "setup": 0.021683589261428153,
+        "middle": 0.9408619234053344,
+        "endgame": 0.03745448733323752
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.013052586382444178,
+        "BUILD_ROAD": 0.04305261786080487,
+        "BUILD_SETTLEMENT": 0.024569651543764538,
+        "BUY_DEVELOPMENT_CARD": 0.052686106715866744,
+        "DISCARD_RESOURCE": 0.008921250263673484,
+        "END_TURN": 0.32326583719179425,
+        "MARITIME_TRADE": 0.09039730116323719,
+        "MOVE_ROBBER": 0.08198327795551609,
+        "PLAY_KNIGHT_CARD": 0.027653584951252502,
+        "PLAY_MONOPOLY": 0.0001096195305734007,
+        "PLAY_ROAD_BUILDING": 0.004363020362666876,
+        "PLAY_YEAR_OF_PLENTY": 0.003985628729334266,
+        "ROLL": 0.3259595173490716
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 0.9999999999999976
+    },
+    "D2-W2": {
+      "recipe": "D2-W2",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "631f170b2fa2715a9a92e29b0605588d665ad072a490926fa9ff10fb2aee46bc",
+      "maximum_relative_sampling_probability": 8.540213178294573,
+      "expected_phase_proportions": {
+        "setup": 0.17703123430752232,
+        "middle": 0.638213935306433,
+        "endgame": 0.18475483038604457
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.012675153832552938,
+        "BUILD_ROAD": 0.11676538036375023,
+        "BUILD_SETTLEMENT": 0.10338203399931596,
+        "BUY_DEVELOPMENT_CARD": 0.04077195217666148,
+        "DISCARD_RESOURCE": 0.010459866165914754,
+        "END_TURN": 0.2651605315819342,
+        "MARITIME_TRADE": 0.08922546529249566,
+        "MOVE_ROBBER": 0.06632513004284687,
+        "PLAY_KNIGHT_CARD": 0.021811104561570534,
+        "PLAY_MONOPOLY": 0.00020791050411516393,
+        "PLAY_ROAD_BUILDING": 0.003237982748940744,
+        "PLAY_YEAR_OF_PLENTY": 0.003166862392641012,
+        "ROLL": 0.2668106263372604
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 1.0000000000000844
+    },
+    "D2-W3-V0": {
+      "recipe": "D2-W3-V0",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "293f0b76dee66d55e4e86889f15ddc04ac4f0a223066ac498a940d1fc176ddf1",
+      "maximum_relative_sampling_probability": 0.9999999999999999,
+      "expected_phase_proportions": {
+        "setup": 0.02072913528171135,
+        "middle": 0.9430945372795323,
+        "endgame": 0.03617632743875587
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.012721626069019859,
+        "BUILD_ROAD": 0.04198901429995132,
+        "BUILD_SETTLEMENT": 0.023851020928453884,
+        "BUY_DEVELOPMENT_CARD": 0.05240457042204555,
+        "DISCARD_RESOURCE": 0.009265997635988593,
+        "END_TURN": 0.32353581940806997,
+        "MARITIME_TRADE": 0.09144320578487494,
+        "MOVE_ROBBER": 0.08257816302408044,
+        "PLAY_KNIGHT_CARD": 0.027693698287250552,
+        "PLAY_MONOPOLY": 0.0001251535448582752,
+        "PLAY_ROAD_BUILDING": 0.004299256031705563,
+        "PLAY_YEAR_OF_PLENTY": 0.003981736853083643,
+        "ROLL": 0.32611073771061716
+      },
+      "policy_weight_mean_nonforced": 1.0000000000000002,
+      "value_weight_expectation": 1.0000000000000844
+    },
+    "D2-W3-V1": {
+      "recipe": "D2-W3-V1",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "293f0b76dee66d55e4e86889f15ddc04ac4f0a223066ac498a940d1fc176ddf1",
+      "maximum_relative_sampling_probability": 0.9999999999999999,
+      "expected_phase_proportions": {
+        "setup": 0.02072913528171135,
+        "middle": 0.9430945372795323,
+        "endgame": 0.03617632743875587
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.012721626069019859,
+        "BUILD_ROAD": 0.04198901429995132,
+        "BUILD_SETTLEMENT": 0.023851020928453884,
+        "BUY_DEVELOPMENT_CARD": 0.05240457042204555,
+        "DISCARD_RESOURCE": 0.009265997635988593,
+        "END_TURN": 0.32353581940806997,
+        "MARITIME_TRADE": 0.09144320578487494,
+        "MOVE_ROBBER": 0.08257816302408044,
+        "PLAY_KNIGHT_CARD": 0.027693698287250552,
+        "PLAY_MONOPOLY": 0.0001251535448582752,
+        "PLAY_ROAD_BUILDING": 0.004299256031705563,
+        "PLAY_YEAR_OF_PLENTY": 0.003981736853083643,
+        "ROLL": 0.32611073771061716
+      },
+      "policy_weight_mean_nonforced": 1.0000000000000002,
+      "value_weight_expectation": 1.0000000000000002
+    },
+    "D2-W4": {
+      "recipe": "D2-W4",
+      "unique_games": 1118,
+      "available_decisions": 431470,
+      "probabilities_sha256": "133deccdb78be3988d4cc41fcf81712251622ebbd817019aa78c70a8c9a3f49b",
+      "maximum_relative_sampling_probability": 5.0,
+      "expected_phase_proportions": {
+        "setup": 0.04219896440196336,
+        "middle": 0.9171686284463987,
+        "endgame": 0.04063240715163798
+      },
+      "expected_family_proportions": {
+        "BUILD_CITY": 0.053080296557247456,
+        "BUILD_ROAD": 0.06771399067271319,
+        "BUILD_SETTLEMENT": 0.05864499398696447,
+        "BUY_DEVELOPMENT_CARD": 0.0729217687337603,
+        "DISCARD_RESOURCE": 0.04632998817994299,
+        "END_TURN": 0.20848739322677254,
+        "MARITIME_TRADE": 0.09244108641517503,
+        "MOVE_ROBBER": 0.08800856503477772,
+        "PLAY_KNIGHT_CARD": 0.06056633266636277,
+        "PLAY_MONOPOLY": 0.0006257677242913762,
+        "PLAY_ROAD_BUILDING": 0.021496280158527826,
+        "PLAY_YEAR_OF_PLENTY": 0.019908684265418218,
+        "ROLL": 0.20977485237804608
+      },
+      "policy_weight_mean_nonforced": 1.0,
+      "value_weight_expectation": 1.0000000000000844
+    }
+  },
+  "metadata_only": [
+    "actor-relative final decision ordinal"
+  ],
+  "validation_distribution": "common complete D2, unweighted",
+  "gate_passed": true
+}

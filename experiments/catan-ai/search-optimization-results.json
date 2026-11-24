@@ -1,0 +1,182 @@
+{
+  "revision": "optimized-unbounded-own-actions-v1",
+  "own_action_limit": null,
+  "total_action_safety_cap": 128,
+  "deadline_ms": 500,
+  "workers_by_model": {
+    "MLP": 1,
+    "XD-CNN": 4,
+    "H-GNN": 1,
+    "TRANSFORMER": 1
+  },
+  "validation": {
+    "full_repository_tests_passed": 81,
+    "search_audit_positions": 1000,
+    "search_audit_passed": true,
+    "audit_run": "runs/catan-ai/phase4-validation-e6f29e48626c-20261107T040641533313Z/run.json",
+    "audit_sha256": "ff9c0d727e7c69bdd6a5d11a72aa23b00303ed00d631e0c9ef826ceb02c6e01b",
+    "targeted_tests_log": "runs/catan-ai/search-optimization-final-checks.log"
+  },
+  "source_sha256": {
+    "agent_apis/stochastic.py": "f96b4e8bc58811ff0df00653c5e5bc4cda1a0b254bc0100c1cafad188e367921",
+    "agent_apis/stochastic_search.py": "63fef840bff4e7ec97d215ce6b65a2c9a53201419260171a35fda69de07b0ed6",
+    "agent_apis/neural/provider.py": "0a8c1075bdf73eebb41ac6628ca23e20c46d25f07c88d04b896337d1f876093b",
+    "agent_apis/neural/parallel_search.py": "ce2cd524ae6f224b0198d441db9faf5d3dc98b16041363c575411976dbb105ca",
+    "agent_apis/benchmark.py": "2d34799a9ceea60f1cfc863fd6a6c3fa49beb4fa7011e4c34a174c4e86bbfc53",
+    "agent_apis/neural/pipeline.py": "8f2418586a2ab647a4346645d79c5b0dcca47d2b70c8b8770646a2c510b7ee5a"
+  },
+  "measurements": {
+    "baseline": {
+      "artifact": "runs/catan-ai/search-opt-before-recheck.json",
+      "sha256": "c9050a15f97f4f99f0493cc2b928f92e32d6f99afb68bbc9fdd53840717f22d8",
+      "summary": {
+        "simulations": {
+          "min": 22,
+          "median": 38.0,
+          "max": 65
+        },
+        "max_root_depth": {
+          "min": 1,
+          "median": 4.0,
+          "max": 4
+        },
+        "max_action_depth": {
+          "min": 4,
+          "median": 8.0,
+          "max": 12
+        },
+        "max_completed_turn_depth": {
+          "min": 0,
+          "median": 2.0,
+          "max": 4
+        },
+        "decision_nodes": {
+          "min": 13,
+          "median": 29.0,
+          "max": 62
+        },
+        "evaluations": {
+          "min": 20,
+          "median": 39.0,
+          "max": 66
+        }
+      },
+      "timing_totals_ms": {
+        "decision": 8761.399791997974,
+        "model_forward": 2282.9566082073143,
+        "prediction_boundary_including_forward": 2620.962290937314,
+        "remaining_search_and_game_work": 6140.43750106066
+      }
+    },
+    "optimized_same_depth": {
+      "artifact": "runs/catan-ai/search-opt-depth4.json",
+      "sha256": "241f7781e590069b3eb906fd11632db488a7784f44a01a6646b641be61fabc21",
+      "summary": {
+        "simulations": {
+          "min": 38,
+          "median": 65.5,
+          "max": 123
+        },
+        "max_root_depth": {
+          "min": 1,
+          "median": 4.0,
+          "max": 4
+        },
+        "max_action_depth": {
+          "min": 4,
+          "median": 8.5,
+          "max": 12
+        },
+        "max_completed_turn_depth": {
+          "min": 0,
+          "median": 2.0,
+          "max": 4
+        },
+        "decision_nodes": {
+          "min": 15,
+          "median": 48.0,
+          "max": 111
+        },
+        "evaluations": {
+          "min": 37,
+          "median": 66.5,
+          "max": 124
+        }
+      },
+      "timing_totals_ms": {
+        "decision": 8335.536541999318,
+        "model_forward": 3860.140862801927,
+        "prediction_boundary_including_forward": 4202.717281761579,
+        "remaining_search_and_game_work": 4132.8192602377385
+      }
+    },
+    "optimized_uncapped": {
+      "artifact": "runs/catan-ai/search-opt-unbounded.json",
+      "sha256": "ab78f8ffe40c5ac9906a0c7e56f5bc487bb3a2488bf93f8f4e22c9b4bf4bc3c7",
+      "summary": {
+        "simulations": {
+          "min": 40,
+          "median": 59.0,
+          "max": 114
+        },
+        "max_root_depth": {
+          "min": 1,
+          "median": 4.0,
+          "max": 7
+        },
+        "max_action_depth": {
+          "min": 5,
+          "median": 9.0,
+          "max": 14
+        },
+        "max_completed_turn_depth": {
+          "min": 1,
+          "median": 2.0,
+          "max": 4
+        },
+        "decision_nodes": {
+          "min": 35,
+          "median": 60.0,
+          "max": 115
+        },
+        "evaluations": {
+          "min": 35,
+          "median": 60.0,
+          "max": 115
+        }
+      },
+      "timing_totals_ms": {
+        "decision": 8376.855044974945,
+        "model_forward": 3868.9035546558443,
+        "prediction_boundary_including_forward": 4222.368001181167,
+        "remaining_search_and_game_work": 4154.487043793779
+      }
+    },
+    "threaded": {
+      "artifact": "runs/catan-ai/search-thread-benchmark.json",
+      "sha256": "5150a4afc3068b3b71876717e9b72a65b244c837f36ef5b827dff3c91be9b7f6",
+      "summary": {
+        "1": {
+          "median_simulations": 61.0,
+          "mean_simulations": 63.666666666666664,
+          "max_wall_ms": 486.6632920020493
+        },
+        "2": {
+          "median_simulations": 70.0,
+          "mean_simulations": 72.41666666666667,
+          "max_wall_ms": 463.5415000084322
+        },
+        "4": {
+          "median_simulations": 90.0,
+          "mean_simulations": 85.75,
+          "max_wall_ms": 493.0092919967137
+        }
+      }
+    }
+  },
+  "notes": [
+    "Same-depth serial comparison uses identical18 validation positions. Thread comparison uses separate matched12 position set.",
+    "Measurements are short diagnostics, not win-rate or latency certification.",
+    "No full-game evaluation was restarted; historical search results are not pooled with this revision."
+  ]
+}

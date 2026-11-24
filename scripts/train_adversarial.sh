@@ -1,0 +1,22 @@
+./run_coreml_cohort.sh \
+  --n-cohorts 8 \
+  --cnn-checkpoint runs/catan-ai/fresh-xdcnn-visible/pretraining/iteration-1/best.pt \
+  --transformer-checkpoint runs/catan-ai/transformer-value-ablations/typed-exphormer/best.pt \
+  --output runs/catan-ai/coreml-cohorts-adversarial-puct \
+  --mcts-opponent adversarial-puct \
+  --simulations 128 \
+  --setup-simulations 512 \
+  --setup-exploration-games 500 \
+  --setup-temperature 1.5 \
+  --positions-per-game 64 \
+  --resample-every 100 \
+  --cnn-selfplay-games 1500 \
+  --jsettlers-cnn-games 0 \
+  --workers 256 \
+  --coreml-batch 32 \
+  --gpu-streams 8 \
+  --wait-us 100 \
+  --mcts-lanes 1 \
+  --updates 2000 \
+  --value-loss-weight 0.25 \
+  --replay-cohorts 2

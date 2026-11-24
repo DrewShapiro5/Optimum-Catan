@@ -1,0 +1,14 @@
+{
+  "gate_passed": true,
+  "checks": 144,
+  "positions_per_stratum": {
+    "setup": 2,
+    "discard": 2,
+    "middle": 2,
+    "robber": 2,
+    "free-road": 2,
+    "endgame": 2
+  },
+  "topology_sha256": "a26a7b034d686fb9807ce3189910178dac176f8d03a94109255f30e332534ed7",
+  "method": "Independent physical Catanatron board rotation, including water/port relocation; exact legal-action sets, categorical numbers and typed port-edge features"
+}

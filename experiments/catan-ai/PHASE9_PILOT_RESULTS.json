@@ -1,0 +1,3328 @@
+{
+  "status": "completed",
+  "stage": "completed-pilot",
+  "source_sha256": {
+    "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+    "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+    "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+    "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+    "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+    "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+    "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+    "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+    "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+    "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+    "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+  },
+  "protocol": {
+    "phase": 9,
+    "route": "DAgger teacher data aggregation pilot",
+    "model": "XD-CNN",
+    "parent": "seed11 D2/W0 validation-selected checkpoint",
+    "collection_games": 20,
+    "validation_opponent": "JSETTLERS",
+    "updates": 1000,
+    "batch_size": 256,
+    "old_data_fraction": 0.5,
+    "validation_games": 10,
+    "training_device": "mps",
+    "seed": 11,
+    "teacher_queries": "All non-forced learner decisions; sync SMART teacher from actor-redacted current view. Exclude and report failed queries.",
+    "value_targets": "Actual completed learner-game outcomes; entire censored games excluded",
+    "checkpoint_selection": "Common unweighted D2 validation loss, including parent step0; earliest tie",
+    "final_seeds_used": false,
+    "automatic_scale_up": false,
+    "scope": "Bounded pilot only, not full 500-game/three-route phase9",
+    "max_query_failure_rate": 0.1
+  },
+  "parent_checkpoint": {
+    "path": "runs/catan-ai/phase5-XD-CNN-seed11-478a003940ec-20261104T232359576222Z/best.pt",
+    "sha256": "f2b477266b58cbcba820c28e305f662626c0519f4b8aa7ebc729764800dd4b70"
+  },
+  "collection": {
+    "phase9-train-0000-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0000",
+        "board_seed": 2173568461529678023,
+        "simulator_seed": 10322909782722929853,
+        "agent_seed": 17569891647738302500
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 485,
+      "turns": 157,
+      "teacher_queries": 216,
+      "excluded_queries": [
+        {
+          "step": 133,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0000-BLUE.npz",
+        "sha256": "8a4522a6bf3036402cd4dda9118ffdba1495ddfcf9431468cb79492dabfd6171",
+        "rows": 257
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.528711749997456,
+      "trajectory_sha256": "0dacb05de0716e54599e0776ca69220c74506aafcdf980e28cfb01daf026585b"
+    },
+    "phase9-train-0000-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0000",
+        "board_seed": 2173568461529678023,
+        "simulator_seed": 10322909782722929853,
+        "agent_seed": 17569891647738302500
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 444,
+      "turns": 136,
+      "teacher_queries": 119,
+      "excluded_queries": [
+        {
+          "step": 185,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0000-RED.npz",
+        "sha256": "afe2ae53fe343f7788eb0b971b2ed15339da3edadde6473fa435c394d629d091",
+        "rows": 208
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.7168049999745563,
+      "trajectory_sha256": "c38428f63f0cc9cfa73d6f4d3afae5ecbb3b307896c44cc1367c2b2d40290694"
+    },
+    "phase9-train-0001-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0001",
+        "board_seed": 18390023651824515731,
+        "simulator_seed": 15986845700279687081,
+        "agent_seed": 5539946295576447879
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 381,
+      "turns": 116,
+      "teacher_queries": 157,
+      "excluded_queries": [
+        {
+          "step": 368,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 369,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 370,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 371,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 372,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0001-BLUE.npz",
+        "sha256": "4b00b7de8614c57eac5498c7efd2d9ee0131f90b736a955032ca3bde5dcdb61b",
+        "rows": 171
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.7656249580322765,
+      "trajectory_sha256": "754f9c4016c7144f2248592fefc25b45fdad43ab93671d3e939cc03ee7e01a00"
+    },
+    "phase9-train-0001-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0001",
+        "board_seed": 18390023651824515731,
+        "simulator_seed": 15986845700279687081,
+        "agent_seed": 5539946295576447879
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 362,
+      "turns": 119,
+      "teacher_queries": 159,
+      "excluded_queries": [
+        {
+          "step": 44,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0001-RED.npz",
+        "sha256": "9064b1d9edc335a7a03c5bc616b48cd745557401035fafa08edd33d6f5cbbbfb",
+        "rows": 170
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.3904257499962114,
+      "trajectory_sha256": "66413ac38e102d5b6b44b3d07e5ba90f92f466fb3f935f6ca8097b5929da4568"
+    },
+    "phase9-train-0002-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0002",
+        "board_seed": 9124143198687048374,
+        "simulator_seed": 1972267280324503387,
+        "agent_seed": 11873411298129365298
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 619,
+      "turns": 196,
+      "teacher_queries": 332,
+      "excluded_queries": [
+        {
+          "step": 165,
+          "error": "ValueError: Teacher query had native translation rejection"
+        },
+        {
+          "step": 385,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 386,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 387,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 388,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 389,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 566,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 567,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 568,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 569,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 570,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 600,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 601,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 602,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 603,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        },
+        {
+          "step": 604,
+          "error": "ValueError: Teacher reconstruction differs from requested decision"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0002-BLUE.npz",
+        "sha256": "42bcabbf2129519e875a3edac4631b0d1966104b7b9540ad97c1c0bca032d527",
+        "rows": 331
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 5.667680207989179,
+      "trajectory_sha256": "262493e899d27721088e87165b1c6e8be0efb3ab001fa248b140c45ae8765bee"
+    },
+    "phase9-train-0002-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0002",
+        "board_seed": 9124143198687048374,
+        "simulator_seed": 1972267280324503387,
+        "agent_seed": 11873411298129365298
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 254,
+      "turns": 85,
+      "teacher_queries": 97,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0002-RED.npz",
+        "sha256": "99e5eff7180b07a9a414afac1a9df1616b8f737ed84a92734c95a64087509b59",
+        "rows": 110
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 2.8553750840364955,
+      "trajectory_sha256": "12c212e1ac885d173d153492dee162af7800d722e66ebcae8fd96e2a80dd7fce"
+    },
+    "phase9-train-0003-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0003",
+        "board_seed": 8844872635220064082,
+        "simulator_seed": 12183105248705672667,
+        "agent_seed": 11983845990338242965
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 428,
+      "turns": 137,
+      "teacher_queries": 188,
+      "excluded_queries": [
+        {
+          "step": 237,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0003-BLUE.npz",
+        "sha256": "b0292724ad108b550dbd0b332ff1f6b1c3db14469becf45e9c5e44015b4542be",
+        "rows": 212
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.110779625014402,
+      "trajectory_sha256": "7d6126208ab4cbe55e65732b678413e43c99b754b70f6731a1b43087db538349"
+    },
+    "phase9-train-0003-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0003",
+        "board_seed": 8844872635220064082,
+        "simulator_seed": 12183105248705672667,
+        "agent_seed": 11983845990338242965
+      },
+      "learner_color": "RED",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 511,
+      "turns": 179,
+      "teacher_queries": 247,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0003-RED.npz",
+        "sha256": "dec66b20cfa529b382ad12c4fc0e8d85f5953eb76e97fc1feb8f01c1b1cca2a4",
+        "rows": 276
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.7286469580139965,
+      "trajectory_sha256": "3c2b7ff3f60419eac51cac168e4a853418846a1177e4c04d245c33bb2a6e3c30"
+    },
+    "phase9-train-0004-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0004",
+        "board_seed": 16281805019234134043,
+        "simulator_seed": 123982678502783160,
+        "agent_seed": 2596701250561852769
+      },
+      "learner_color": "BLUE",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 577,
+      "turns": 192,
+      "teacher_queries": 259,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0004-BLUE.npz",
+        "sha256": "8e625dafa1816cf47e2afbb3e67983c036570859f7a7e1689cdde99bd924f119",
+        "rows": 295
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 5.1985358750098385,
+      "trajectory_sha256": "f66fb7637146cad1b2b81bc1638fb639da6d26977e873726ff942971de71422e"
+    },
+    "phase9-train-0004-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0004",
+        "board_seed": 16281805019234134043,
+        "simulator_seed": 123982678502783160,
+        "agent_seed": 2596701250561852769
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 549,
+      "turns": 186,
+      "teacher_queries": 231,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0004-RED.npz",
+        "sha256": "c7b0b04d0a1996f822d9350de4e7f33f3b990a368447c29eecf87df13bab2a32",
+        "rows": 263
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 5.185552458046004,
+      "trajectory_sha256": "43b5cbd10603c98ff72780ae148e83d054b6db48e9c4c7a52607630f09658016"
+    },
+    "phase9-train-0005-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0005",
+        "board_seed": 13386203489036812402,
+        "simulator_seed": 16113181262247406639,
+        "agent_seed": 8510415104491933652
+      },
+      "learner_color": "BLUE",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 505,
+      "turns": 172,
+      "teacher_queries": 259,
+      "excluded_queries": [
+        {
+          "step": 127,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0005-BLUE.npz",
+        "sha256": "2c3842f5f66484b7fea34b78222eb46f2df504880da28ac072508a8caa56d320",
+        "rows": 266
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 5.0059763340395875,
+      "trajectory_sha256": "6110f220166114f34b489a8044321e742697cb11f2f721b42242b4ff0aca38c7"
+    },
+    "phase9-train-0005-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0005",
+        "board_seed": 13386203489036812402,
+        "simulator_seed": 16113181262247406639,
+        "agent_seed": 8510415104491933652
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 341,
+      "turns": 118,
+      "teacher_queries": 101,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0005-RED.npz",
+        "sha256": "29cfa56b0f14052bb0cdf2e2a6722da7939dd534226f1690afc1f096c4eb3885",
+        "rows": 150
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.226470125024207,
+      "trajectory_sha256": "a0af79b75c37c047e50cd94310e83fc953e573167f9a3e3b0482f005ed1d1b27"
+    },
+    "phase9-train-0006-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0006",
+        "board_seed": 11993039865872548816,
+        "simulator_seed": 18105454249608752030,
+        "agent_seed": 14897052994687739875
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 433,
+      "turns": 145,
+      "teacher_queries": 154,
+      "excluded_queries": [
+        {
+          "step": 112,
+          "error": "ValueError: Teacher query had native translation rejection"
+        }
+      ],
+      "dataset": {
+        "file": "phase9-train-0006-BLUE.npz",
+        "sha256": "2728a02a5343d7a91efdfcb0147e3b16b00571ac10acbbc1496ea6686ceeff5b",
+        "rows": 204
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.482933624996804,
+      "trajectory_sha256": "770817ef95b612282df94a0b72ee0344e4ec89da399c64bc99ae43c5d159f8ef"
+    },
+    "phase9-train-0006-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0006",
+        "board_seed": 11993039865872548816,
+        "simulator_seed": 18105454249608752030,
+        "agent_seed": 14897052994687739875
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 217,
+      "turns": 72,
+      "teacher_queries": 41,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0006-RED.npz",
+        "sha256": "1dee933be97adcd6eedc9c33d45138acd82cc23c45bc16c7af06ac90c399061c",
+        "rows": 91
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 2.804570499982219,
+      "trajectory_sha256": "939e04c43b91bb122c1d8984185a1c566cacb0c4d339b2dc215e4a3831c93026"
+    },
+    "phase9-train-0007-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0007",
+        "board_seed": 2082068576121193700,
+        "simulator_seed": 4077878892052445327,
+        "agent_seed": 1117276957233663529
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 439,
+      "turns": 150,
+      "teacher_queries": 177,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0007-BLUE.npz",
+        "sha256": "b38529440f8a8089b49ff833678643072067d7491a6ee7862949193e73f8fa3c",
+        "rows": 208
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.8075370420119725,
+      "trajectory_sha256": "915fa4ccdc429c65e80b34a98b030ffc78cf6fde6cff7ad6f767e17c384b2208"
+    },
+    "phase9-train-0007-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0007",
+        "board_seed": 2082068576121193700,
+        "simulator_seed": 4077878892052445327,
+        "agent_seed": 1117276957233663529
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 513,
+      "turns": 177,
+      "teacher_queries": 138,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0007-RED.npz",
+        "sha256": "c6bd5f34048c8ee52b5b2a39aa12dc3976a110bb45eb3ab01a7a02880378fce2",
+        "rows": 254
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.612801958050113,
+      "trajectory_sha256": "afe7e8286011316d884fdd97ebf94f577186f5f32da70ed00f51a0a74b5d6fac"
+    },
+    "phase9-train-0008-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0008",
+        "board_seed": 18117103741514090299,
+        "simulator_seed": 14512135256669690893,
+        "agent_seed": 2702679234865494715
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 418,
+      "turns": 146,
+      "teacher_queries": 158,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0008-BLUE.npz",
+        "sha256": "2e7ec8ce50b05f897f4e6999707d94f10f5aec0ed90c0568782699abea336b99",
+        "rows": 194
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 4.468960458994843,
+      "trajectory_sha256": "c965e629aef85041ff7a4a6a14bef32f4eac305764249e4053978b58a19fc872"
+    },
+    "phase9-train-0008-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0008",
+        "board_seed": 18117103741514090299,
+        "simulator_seed": 14512135256669690893,
+        "agent_seed": 2702679234865494715
+      },
+      "learner_color": "RED",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 401,
+      "turns": 134,
+      "teacher_queries": 171,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0008-RED.npz",
+        "sha256": "43531fc9f1e683ec120f06f8a8431117251f27c4ab67f05e5545177f692693f8",
+        "rows": 225
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.9580531250103377,
+      "trajectory_sha256": "1aeeb85dcf5b8a6e0bb6c76ff05c4c762c8ed53d26aa7b10b52be0eab38e4024"
+    },
+    "phase9-train-0009-BLUE": {
+      "pair": {
+        "pair_id": "phase9-train-0009",
+        "board_seed": 10353247072325188201,
+        "simulator_seed": 15140788167810537384,
+        "agent_seed": 6575406793510012649
+      },
+      "learner_color": "BLUE",
+      "winner": "RED",
+      "status": "completed",
+      "steps": 370,
+      "turns": 125,
+      "teacher_queries": 125,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0009-BLUE.npz",
+        "sha256": "e1f1f8b057db627b7fd9531b6bae418782b23005e7472bf09571fc8b90352cfa",
+        "rows": 177
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.4184584999457,
+      "trajectory_sha256": "b18deb6b1184845249ebf987d1cba612ff97d67ab55674ffae4860a0a9ae18df"
+    },
+    "phase9-train-0009-RED": {
+      "pair": {
+        "pair_id": "phase9-train-0009",
+        "board_seed": 10353247072325188201,
+        "simulator_seed": 15140788167810537384,
+        "agent_seed": 6575406793510012649
+      },
+      "learner_color": "RED",
+      "winner": "BLUE",
+      "status": "completed",
+      "steps": 334,
+      "turns": 114,
+      "teacher_queries": 87,
+      "excluded_queries": [],
+      "dataset": {
+        "file": "phase9-train-0009-RED.npz",
+        "sha256": "0db749972ffbf2152fba793341079111a02d2d7590cad3f5b2b4b9308965b3e7",
+        "rows": 151
+      },
+      "source_sha256": {
+        "agent_apis/neural/phase9.py": "31a917290a019f62416c789c833e285ad81415db646a2434e44f99a4879c1a1b",
+        "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+        "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+        "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+        "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+        "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+        "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+        "agent_apis/jsettlers/player.py": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+        "agent_apis/jsettlers/Bridge.java": "81ab094c2ac831c678f8d4e3a7d245a3a79d348305fdd7675d229e9ce5ba788f",
+        "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+        "experiments/catan-ai/phase9-pilot.json": "b3a4f3ccc7a6643681a2f3c4ba3eb8c5069579b1a10919b53e01658712ee1143"
+      },
+      "elapsed_seconds": 3.3954482920235023,
+      "trajectory_sha256": "2f13f553f2cd1fd8b7960ac5b8e1dec005a5585e9c799f2e1a3ddef298617f95"
+    }
+  },
+  "started_at": "2026-11-13T03:35:24.741708+00:00",
+  "final_seeds_used": false,
+  "new_data_is_training_only": true,
+  "pid": null,
+  "updated_at": "2026-11-13T03:39:13.654900+00:00",
+  "native_teacher_identity": {
+    "key": "JSETTLERS",
+    "name": "JSettlers",
+    "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+    "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+    "protocol": "catanotron-observation-v1",
+    "capabilities": [
+      "decide",
+      "sync"
+    ],
+    "sync_endpoint": "/api/agents/JSETTLERS/sync",
+    "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+    "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+    "strategy": "SMART",
+    "engine": "SOCRobotBrain",
+    "jars": {
+      "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+      "jsettlers-adapter.jar": "cc49e2b83073f40c07dde2c8b84cc8a834ced3ec3254825f3e9a64b0a8db56d2"
+    },
+    "java_version": "java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment (build 1.8.0_202-b08)\nJava HotSpot(TM) 64-Bit Server VM (build 25.202-b08, mixed mode)"
+  },
+  "software": {
+    "torch": "2.15.0",
+    "precision": "float32",
+    "cpu_threads": 6
+  },
+  "training_updates": 1000,
+  "training": {
+    "checkpoint": {
+      "path": "runs/catan-ai/phase9-pilot/best.pt",
+      "sha256": "6567dd42848cb09a44864743eb819b01430980f211afc14c5298745604e25387"
+    },
+    "updates": 1000,
+    "best_step": 0,
+    "best_validation_loss": 1.0904361408448917,
+    "initial_validation": {
+      "rows": 30730,
+      "nonforced": 20756,
+      "policy_nll": 0.6381661842774049,
+      "top1_accuracy": 0.7774619387165157,
+      "value_bce": 0.45226995656748686,
+      "brier": 0.13897185868080833,
+      "by_phase": {
+        "setup": {
+          "count": 624,
+          "nll": 1.562342019035266,
+          "top1_accuracy": 0.5112179487179487
+        },
+        "middle": {
+          "count": 19476,
+          "nll": 0.6028672874671621,
+          "top1_accuracy": 0.7878927911275416
+        },
+        "endgame": {
+          "count": 656,
+          "nll": 0.8070619138093983,
+          "top1_accuracy": 0.7210365853658537
+        }
+      },
+      "by_family": {
+        "BUILD_CITY": {
+          "count": 385,
+          "nll": 1.021685523104358,
+          "top1_accuracy": 0.5116883116883116
+        },
+        "BUILD_ROAD": {
+          "count": 1275,
+          "nll": 2.366348446864708,
+          "top1_accuracy": 0.26823529411764707
+        },
+        "BUILD_SETTLEMENT": {
+          "count": 716,
+          "nll": 1.6637268438519046,
+          "top1_accuracy": 0.43854748603351956
+        },
+        "BUY_DEVELOPMENT_CARD": {
+          "count": 1591,
+          "nll": 0.23434204252765733,
+          "top1_accuracy": 0.9421747328724073
+        },
+        "END_TURN": {
+          "count": 5506,
+          "nll": 0.3294945006673872,
+          "top1_accuracy": 0.8957500908100254
+        },
+        "MARITIME_TRADE": {
+          "count": 2796,
+          "nll": 1.2435715570299752,
+          "top1_accuracy": 0.5454220314735336
+        },
+        "MOVE_ROBBER": {
+          "count": 2460,
+          "nll": 0.8571061512319053,
+          "top1_accuracy": 0.6658536585365854
+        },
+        "PLAY_KNIGHT_CARD": {
+          "count": 837,
+          "nll": 0.27449242485925923,
+          "top1_accuracy": 0.8972520908004779
+        },
+        "PLAY_ROAD_BUILDING": {
+          "count": 130,
+          "nll": 0.2240834482963412,
+          "top1_accuracy": 0.9153846153846154
+        },
+        "PLAY_YEAR_OF_PLENTY": {
+          "count": 126,
+          "nll": 2.6494924558533564,
+          "top1_accuracy": 0.06349206349206349
+        },
+        "ROLL": {
+          "count": 4666,
+          "nll": 0.004086456685286699,
+          "top1_accuracy": 0.9991427346763824
+        },
+        "DISCARD_RESOURCE": {
+          "count": 265,
+          "nll": 0.89173791138631,
+          "top1_accuracy": 0.5660377358490566
+        },
+        "PLAY_MONOPOLY": {
+          "count": 3,
+          "nll": 7.822896162668864,
+          "top1_accuracy": 0.0
+        }
+      },
+      "calibration": [
+        {
+          "low": 0.0,
+          "high": 0.1,
+          "count": 7381,
+          "mean_probability": 0.02545852328718411,
+          "win_frequency": 0.07505758027367565
+        },
+        {
+          "low": 0.1,
+          "high": 0.2,
+          "count": 2211,
+          "mean_probability": 0.1480596644853586,
+          "win_frequency": 0.23156942559927635
+        },
+        {
+          "low": 0.2,
+          "high": 0.3,
+          "count": 1719,
+          "mean_probability": 0.24888644000345223,
+          "win_frequency": 0.33507853403141363
+        },
+        {
+          "low": 0.3,
+          "high": 0.4,
+          "count": 1595,
+          "mean_probability": 0.34941573113109625,
+          "win_frequency": 0.3768025078369906
+        },
+        {
+          "low": 0.4,
+          "high": 0.5,
+          "count": 1650,
+          "mean_probability": 0.4497273231636394,
+          "win_frequency": 0.4781818181818182
+        },
+        {
+          "low": 0.5,
+          "high": 0.6,
+          "count": 1520,
+          "mean_probability": 0.550532665378169,
+          "win_frequency": 0.5276315789473685
+        },
+        {
+          "low": 0.6,
+          "high": 0.7,
+          "count": 1509,
+          "mean_probability": 0.6503453212830308,
+          "win_frequency": 0.6242544731610338
+        },
+        {
+          "low": 0.7,
+          "high": 0.8,
+          "count": 1602,
+          "mean_probability": 0.7523364047060597,
+          "win_frequency": 0.6941323345817728
+        },
+        {
+          "low": 0.8,
+          "high": 0.9,
+          "count": 1877,
+          "mean_probability": 0.8523652725036817,
+          "win_frequency": 0.7826318593500267
+        },
+        {
+          "low": 0.9,
+          "high": 1.0,
+          "count": 9666,
+          "mean_probability": 0.9790329210955041,
+          "win_frequency": 0.9159942064969998
+        }
+      ],
+      "selection_loss": 1.0904361408448917
+    },
+    "validation_history": [
+      {
+        "step": 250,
+        "rows": 30730,
+        "nonforced": 20756,
+        "policy_nll": 0.6970018973399229,
+        "top1_accuracy": 0.7532761611100405,
+        "value_bce": 0.5221512727422432,
+        "brier": 0.16475466689524648,
+        "by_phase": {
+          "setup": {
+            "count": 624,
+            "nll": 1.6358609749720647,
+            "top1_accuracy": 0.49038461538461536
+          },
+          "middle": {
+            "count": 19476,
+            "nll": 0.6613484565470835,
+            "top1_accuracy": 0.7634011090573013
+          },
+          "endgame": {
+            "count": 656,
+            "nll": 0.8624564810860448,
+            "top1_accuracy": 0.7027439024390244
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 385,
+            "nll": 1.0754806972943343,
+            "top1_accuracy": 0.5116883116883116
+          },
+          "BUILD_ROAD": {
+            "count": 1275,
+            "nll": 2.37599791208903,
+            "top1_accuracy": 0.2619607843137255
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 716,
+            "nll": 1.6510495213822947,
+            "top1_accuracy": 0.4664804469273743
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1591,
+            "nll": 0.5099553522787927,
+            "top1_accuracy": 0.8453802639849152
+          },
+          "END_TURN": {
+            "count": 5506,
+            "nll": 0.36406827119104307,
+            "top1_accuracy": 0.8763167453686888
+          },
+          "MARITIME_TRADE": {
+            "count": 2796,
+            "nll": 1.3663341898433812,
+            "top1_accuracy": 0.5003576537911302
+          },
+          "MOVE_ROBBER": {
+            "count": 2460,
+            "nll": 0.9217246420015165,
+            "top1_accuracy": 0.6207317073170732
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 837,
+            "nll": 0.32129459718044073,
+            "top1_accuracy": 0.8733572281959379
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 130,
+            "nll": 0.20093038860851756,
+            "top1_accuracy": 0.9769230769230769
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 126,
+            "nll": 2.856910952736461,
+            "top1_accuracy": 0.11904761904761904
+          },
+          "ROLL": {
+            "count": 4666,
+            "nll": 0.00031562851155389986,
+            "top1_accuracy": 1.0
+          },
+          "DISCARD_RESOURCE": {
+            "count": 265,
+            "nll": 0.967851932993475,
+            "top1_accuracy": 0.5094339622641509
+          },
+          "PLAY_MONOPOLY": {
+            "count": 3,
+            "nll": 8.260659535725912,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 7771,
+            "mean_probability": 0.02482273130352978,
+            "win_frequency": 0.11581521039763222
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 2105,
+            "mean_probability": 0.1480579142934353,
+            "win_frequency": 0.30783847980997625
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1795,
+            "mean_probability": 0.2515752302570927,
+            "win_frequency": 0.4
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1655,
+            "mean_probability": 0.34765313415368876,
+            "win_frequency": 0.4664652567975831
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1455,
+            "mean_probability": 0.44981220172033276,
+            "win_frequency": 0.49140893470790376
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1550,
+            "mean_probability": 0.548983506579553,
+            "win_frequency": 0.5309677419354839
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1504,
+            "mean_probability": 0.6491834375848795,
+            "win_frequency": 0.5625
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1716,
+            "mean_probability": 0.750975795767524,
+            "win_frequency": 0.6252913752913752
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 2014,
+            "mean_probability": 0.8536040655373344,
+            "win_frequency": 0.7184707050645481
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 9165,
+            "mean_probability": 0.975244561479967,
+            "win_frequency": 0.9022367703218767
+          }
+        ],
+        "selection_loss": 1.219153170082166
+      },
+      {
+        "step": 500,
+        "rows": 30730,
+        "nonforced": 20756,
+        "policy_nll": 0.7003042935911551,
+        "top1_accuracy": 0.759346694931586,
+        "value_bce": 0.4992672597764565,
+        "brier": 0.15701999289892538,
+        "by_phase": {
+          "setup": {
+            "count": 624,
+            "nll": 1.660308605967424,
+            "top1_accuracy": 0.4551282051282051
+          },
+          "middle": {
+            "count": 19476,
+            "nll": 0.6643853057799435,
+            "top1_accuracy": 0.7712055863627029
+          },
+          "endgame": {
+            "count": 656,
+            "nll": 0.8535291989583794,
+            "top1_accuracy": 0.6966463414634146
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 385,
+            "nll": 1.0625754898244684,
+            "top1_accuracy": 0.4961038961038961
+          },
+          "BUILD_ROAD": {
+            "count": 1275,
+            "nll": 2.8202123684976614,
+            "top1_accuracy": 0.2407843137254902
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 716,
+            "nll": 1.8377359827470514,
+            "top1_accuracy": 0.3812849162011173
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1591,
+            "nll": 0.2647410182786917,
+            "top1_accuracy": 0.9472030169704588
+          },
+          "END_TURN": {
+            "count": 5506,
+            "nll": 0.30070525840807083,
+            "top1_accuracy": 0.8786778060297857
+          },
+          "MARITIME_TRADE": {
+            "count": 2796,
+            "nll": 1.3098826358928872,
+            "top1_accuracy": 0.5379113018597997
+          },
+          "MOVE_ROBBER": {
+            "count": 2460,
+            "nll": 0.9550463362437923,
+            "top1_accuracy": 0.6178861788617886
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 837,
+            "nll": 0.5394330775466942,
+            "top1_accuracy": 0.8219832735961768
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 130,
+            "nll": 0.022503188029021168,
+            "top1_accuracy": 1.0
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 126,
+            "nll": 2.6508846732359084,
+            "top1_accuracy": 0.14285714285714285
+          },
+          "ROLL": {
+            "count": 4666,
+            "nll": 0.004104675280768749,
+            "top1_accuracy": 0.9991427346763824
+          },
+          "DISCARD_RESOURCE": {
+            "count": 265,
+            "nll": 1.095596128589702,
+            "top1_accuracy": 0.4641509433962264
+          },
+          "PLAY_MONOPOLY": {
+            "count": 3,
+            "nll": 9.391703446706137,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 7205,
+            "mean_probability": 0.02402889631290472,
+            "win_frequency": 0.0981263011797363
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 2034,
+            "mean_probability": 0.14742297015446829,
+            "win_frequency": 0.26450344149459193
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1790,
+            "mean_probability": 0.24895387097943428,
+            "win_frequency": 0.3575418994413408
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1753,
+            "mean_probability": 0.3505489569831017,
+            "win_frequency": 0.41015402167712495
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1490,
+            "mean_probability": 0.4485219528611074,
+            "win_frequency": 0.4825503355704698
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1539,
+            "mean_probability": 0.5507747128150772,
+            "win_frequency": 0.5120207927225471
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1707,
+            "mean_probability": 0.6493803582557406,
+            "win_frequency": 0.5653192735793791
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1715,
+            "mean_probability": 0.7509770206390247,
+            "win_frequency": 0.6623906705539359
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 2326,
+            "mean_probability": 0.8541710148417324,
+            "win_frequency": 0.7351676698194325
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 9171,
+            "mean_probability": 0.9733664532508991,
+            "win_frequency": 0.9038272816486752
+          }
+        ],
+        "selection_loss": 1.1995715533676115
+      },
+      {
+        "step": 750,
+        "rows": 30730,
+        "nonforced": 20756,
+        "policy_nll": 0.6925715515668233,
+        "top1_accuracy": 0.760599344767778,
+        "value_bce": 0.5040869749236332,
+        "brier": 0.16076546011839923,
+        "by_phase": {
+          "setup": {
+            "count": 624,
+            "nll": 1.677431243734482,
+            "top1_accuracy": 0.4951923076923077
+          },
+          "middle": {
+            "count": 19476,
+            "nll": 0.6546005473584458,
+            "top1_accuracy": 0.7719244197987266
+          },
+          "endgame": {
+            "count": 656,
+            "nll": 0.8830759718832446,
+            "top1_accuracy": 0.676829268292683
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 385,
+            "nll": 0.9661105947448062,
+            "top1_accuracy": 0.5584415584415584
+          },
+          "BUILD_ROAD": {
+            "count": 1275,
+            "nll": 2.6325377318438363,
+            "top1_accuracy": 0.2752941176470588
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 716,
+            "nll": 1.8296307272501497,
+            "top1_accuracy": 0.40083798882681565
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1591,
+            "nll": 0.2588423535785047,
+            "top1_accuracy": 0.9270898805782527
+          },
+          "END_TURN": {
+            "count": 5506,
+            "nll": 0.38357234105083493,
+            "top1_accuracy": 0.8572466400290593
+          },
+          "MARITIME_TRADE": {
+            "count": 2796,
+            "nll": 1.317318928258784,
+            "top1_accuracy": 0.5278969957081545
+          },
+          "MOVE_ROBBER": {
+            "count": 2460,
+            "nll": 0.9207148805866396,
+            "top1_accuracy": 0.6296747967479674
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 837,
+            "nll": 0.21615853784220646,
+            "top1_accuracy": 0.9283154121863799
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 130,
+            "nll": 0.03433074010312199,
+            "top1_accuracy": 1.0
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 126,
+            "nll": 2.7727558281686573,
+            "top1_accuracy": 0.1111111111111111
+          },
+          "ROLL": {
+            "count": 4666,
+            "nll": 0.0034625051162270244,
+            "top1_accuracy": 0.9993570510072868
+          },
+          "DISCARD_RESOURCE": {
+            "count": 265,
+            "nll": 1.087949625501093,
+            "top1_accuracy": 0.49056603773584906
+          },
+          "PLAY_MONOPOLY": {
+            "count": 3,
+            "nll": 8.464667797088623,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 6919,
+            "mean_probability": 0.024211953620652895,
+            "win_frequency": 0.10449486920075156
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 2013,
+            "mean_probability": 0.1471442582924983,
+            "win_frequency": 0.3035270740188773
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1770,
+            "mean_probability": 0.24953384540848814,
+            "win_frequency": 0.34124293785310733
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1692,
+            "mean_probability": 0.3503939573505528,
+            "win_frequency": 0.3912529550827423
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1651,
+            "mean_probability": 0.4494837693630891,
+            "win_frequency": 0.4149000605693519
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1666,
+            "mean_probability": 0.5501443529758705,
+            "win_frequency": 0.5
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1798,
+            "mean_probability": 0.6500806100376456,
+            "win_frequency": 0.560622914349277
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1904,
+            "mean_probability": 0.7498347919528224,
+            "win_frequency": 0.6418067226890757
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 2325,
+            "mean_probability": 0.8536614730537578,
+            "win_frequency": 0.7294623655913979
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 8992,
+            "mean_probability": 0.97310596540093,
+            "win_frequency": 0.9082517793594306
+          }
+        ],
+        "selection_loss": 1.1966585264904563
+      },
+      {
+        "step": 1000,
+        "rows": 30730,
+        "nonforced": 20756,
+        "policy_nll": 0.6758722906559275,
+        "top1_accuracy": 0.7663808055502024,
+        "value_bce": 0.5097066060498993,
+        "brier": 0.15800218131618068,
+        "by_phase": {
+          "setup": {
+            "count": 624,
+            "nll": 1.644855946302414,
+            "top1_accuracy": 0.4951923076923077
+          },
+          "middle": {
+            "count": 19476,
+            "nll": 0.6394676888446882,
+            "top1_accuracy": 0.777623742041487
+          },
+          "endgame": {
+            "count": 656,
+            "nll": 0.834973272027039,
+            "top1_accuracy": 0.6905487804878049
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 385,
+            "nll": 1.0240148701451042,
+            "top1_accuracy": 0.5194805194805194
+          },
+          "BUILD_ROAD": {
+            "count": 1275,
+            "nll": 2.664475191527722,
+            "top1_accuracy": 0.2611764705882353
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 716,
+            "nll": 1.799440876565166,
+            "top1_accuracy": 0.40083798882681565
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1591,
+            "nll": 0.24162880380683016,
+            "top1_accuracy": 0.9365179132620993
+          },
+          "END_TURN": {
+            "count": 5506,
+            "nll": 0.3427491721633214,
+            "top1_accuracy": 0.87286596440247
+          },
+          "MARITIME_TRADE": {
+            "count": 2796,
+            "nll": 1.279446304441351,
+            "top1_accuracy": 0.5400572246065808
+          },
+          "MOVE_ROBBER": {
+            "count": 2460,
+            "nll": 0.9224571534288608,
+            "top1_accuracy": 0.6321138211382114
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 837,
+            "nll": 0.19446175855537715,
+            "top1_accuracy": 0.937873357228196
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 130,
+            "nll": 0.10119333047858582,
+            "top1_accuracy": 0.9846153846153847
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 126,
+            "nll": 2.640642736166243,
+            "top1_accuracy": 0.14285714285714285
+          },
+          "ROLL": {
+            "count": 4666,
+            "nll": 0.006416957024754494,
+            "top1_accuracy": 0.998928418345478
+          },
+          "DISCARD_RESOURCE": {
+            "count": 265,
+            "nll": 0.9992289302484044,
+            "top1_accuracy": 0.5056603773584906
+          },
+          "PLAY_MONOPOLY": {
+            "count": 3,
+            "nll": 8.997190634409586,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 7993,
+            "mean_probability": 0.022703516475080766,
+            "win_frequency": 0.11797823095208307
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 2227,
+            "mean_probability": 0.14864534256058956,
+            "win_frequency": 0.31656937584193984
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1816,
+            "mean_probability": 0.24891435586342728,
+            "win_frequency": 0.3766519823788546
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1698,
+            "mean_probability": 0.3485453515823654,
+            "win_frequency": 0.40694935217903416
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1582,
+            "mean_probability": 0.4500665109694079,
+            "win_frequency": 0.4879898862199747
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1563,
+            "mean_probability": 0.5513249955647127,
+            "win_frequency": 0.5591810620601407
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1522,
+            "mean_probability": 0.6505714253903062,
+            "win_frequency": 0.6274638633377135
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1458,
+            "mean_probability": 0.7499946987841518,
+            "win_frequency": 0.6618655692729767
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 2096,
+            "mean_probability": 0.8541172467854642,
+            "win_frequency": 0.7528625954198473
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 8775,
+            "mean_probability": 0.9750709791876312,
+            "win_frequency": 0.9166951566951567
+          }
+        ],
+        "selection_loss": 1.1855788967058267
+      }
+    ],
+    "test": {
+      "rows": 27137,
+      "nonforced": 17849,
+      "policy_nll": 0.6601909020944534,
+      "top1_accuracy": 0.7676620538965768,
+      "value_bce": 0.4874553011588695,
+      "brier": 0.15510577896025277,
+      "by_phase": {
+        "setup": {
+          "count": 568,
+          "nll": 1.507034550250416,
+          "top1_accuracy": 0.5123239436619719
+        },
+        "middle": {
+          "count": 16385,
+          "nll": 0.6212449095618044,
+          "top1_accuracy": 0.7809581934696369
+        },
+        "endgame": {
+          "count": 896,
+          "nll": 0.8355511499373408,
+          "top1_accuracy": 0.6863839285714286
+        }
+      },
+      "by_family": {
+        "BUILD_CITY": {
+          "count": 357,
+          "nll": 1.0458831365744607,
+          "top1_accuracy": 0.47058823529411764
+        },
+        "BUILD_ROAD": {
+          "count": 1132,
+          "nll": 2.3029597479547292,
+          "top1_accuracy": 0.2756183745583039
+        },
+        "BUILD_SETTLEMENT": {
+          "count": 659,
+          "nll": 1.6455913950040462,
+          "top1_accuracy": 0.44461305007587254
+        },
+        "BUY_DEVELOPMENT_CARD": {
+          "count": 1396,
+          "nll": 0.2981053821336916,
+          "top1_accuracy": 0.921919770773639
+        },
+        "END_TURN": {
+          "count": 4512,
+          "nll": 0.31971397213902036,
+          "top1_accuracy": 0.910904255319149
+        },
+        "MARITIME_TRADE": {
+          "count": 2521,
+          "nll": 1.2456098245940763,
+          "top1_accuracy": 0.5374851249504164
+        },
+        "MOVE_ROBBER": {
+          "count": 2239,
+          "nll": 0.8785827282338655,
+          "top1_accuracy": 0.6409111210361769
+        },
+        "PLAY_KNIGHT_CARD": {
+          "count": 746,
+          "nll": 0.2324156574064965,
+          "top1_accuracy": 0.9168900804289544
+        },
+        "PLAY_ROAD_BUILDING": {
+          "count": 115,
+          "nll": 0.17249712380833682,
+          "top1_accuracy": 0.9391304347826087
+        },
+        "ROLL": {
+          "count": 3812,
+          "nll": 0.01231204879624148,
+          "top1_accuracy": 0.9963273871983211
+        },
+        "DISCARD_RESOURCE": {
+          "count": 257,
+          "nll": 0.9195104540554002,
+          "top1_accuracy": 0.5719844357976653
+        },
+        "PLAY_YEAR_OF_PLENTY": {
+          "count": 101,
+          "nll": 2.564875293486189,
+          "top1_accuracy": 0.04950495049504951
+        },
+        "PLAY_MONOPOLY": {
+          "count": 2,
+          "nll": 8.709516525268555,
+          "top1_accuracy": 0.0
+        }
+      },
+      "calibration": [
+        {
+          "low": 0.0,
+          "high": 0.1,
+          "count": 6248,
+          "mean_probability": 0.02552892726925935,
+          "win_frequency": 0.08482714468629962
+        },
+        {
+          "low": 0.1,
+          "high": 0.2,
+          "count": 1913,
+          "mean_probability": 0.1466592106280748,
+          "win_frequency": 0.29848405645582854
+        },
+        {
+          "low": 0.2,
+          "high": 0.3,
+          "count": 1535,
+          "mean_probability": 0.24987392472133574,
+          "win_frequency": 0.3485342019543974
+        },
+        {
+          "low": 0.3,
+          "high": 0.4,
+          "count": 1329,
+          "mean_probability": 0.34932574031046226,
+          "win_frequency": 0.4123401053423627
+        },
+        {
+          "low": 0.4,
+          "high": 0.5,
+          "count": 1436,
+          "mean_probability": 0.45164327587008807,
+          "win_frequency": 0.47284122562674097
+        },
+        {
+          "low": 0.5,
+          "high": 0.6,
+          "count": 1564,
+          "mean_probability": 0.5513344697863855,
+          "win_frequency": 0.5812020460358056
+        },
+        {
+          "low": 0.6,
+          "high": 0.7,
+          "count": 1513,
+          "mean_probability": 0.649714031009901,
+          "win_frequency": 0.5690680766688698
+        },
+        {
+          "low": 0.7,
+          "high": 0.8,
+          "count": 1452,
+          "mean_probability": 0.7506759297256628,
+          "win_frequency": 0.6136363636363636
+        },
+        {
+          "low": 0.8,
+          "high": 0.9,
+          "count": 2037,
+          "mean_probability": 0.8530153013879198,
+          "win_frequency": 0.7083946980854198
+        },
+        {
+          "low": 0.9,
+          "high": 1.0,
+          "count": 8110,
+          "mean_probability": 0.9788037043758444,
+          "win_frequency": 0.9159062885326757
+        }
+      ],
+      "selection_loss": 1.147646203253323
+    },
+    "new_rows": 4213,
+    "expert_fraction": 0.5,
+    "elapsed_seconds": 92.36583779199282,
+    "configuration": {
+      "contract_version": 1,
+      "experiment": "phase9-dagger-pilot",
+      "stage": "dagger-finetuning",
+      "rules": {
+        "players": 2,
+        "colors": [
+          "BLUE",
+          "RED"
+        ],
+        "map": "BASE",
+        "vps_to_win": 15,
+        "discard_limit": 9,
+        "friendly_robber": false,
+        "player_trading": false
+      },
+      "data": {
+        "corpora": [
+          "data/jsettlers-corpora/full-250",
+          "data/jsettlers-corpora/downsampled"
+        ],
+        "source_schema": 2,
+        "source_features": 633,
+        "model_schema": 3,
+        "view": "complete-decisions",
+        "composition": "D2",
+        "weighting": "W0",
+        "additional_training_data": {
+          "source": "phase9 learner-state JSettlers labels",
+          "fraction": 0.5,
+          "manifest_sha256": "3dae26585c8e5e321d1939a81546a719bd369b522c83213713b96a396d0b4ba8",
+          "value_targets": "actual completed learner-game outcomes; censored games excluded"
+        }
+      },
+      "actions": {
+        "count": 332,
+        "coordinates": "absolute",
+        "victim_colors": "absolute",
+        "normalization": "global-legal-softmax"
+      },
+      "value": {
+        "perspective": "decision-actor",
+        "range": [
+          0,
+          1
+        ],
+        "label_conversion": "(value_target + 1) / 2"
+      },
+      "randomness": {
+        "streams": [
+          "board",
+          "simulator",
+          "search",
+          "training",
+          "evaluation"
+        ],
+        "screening_seed": 11,
+        "confirmation_seeds": [
+          11,
+          23,
+          47
+        ]
+      },
+      "runtime": {
+        "framework": "pytorch",
+        "torch_version": "2.15.0",
+        "evaluation_device": "cpu",
+        "benchmark": {
+          "warmup": 10,
+          "repeats": 100,
+          "batch_sizes": [
+            1,
+            32
+          ]
+        },
+        "cpu_threads": 6,
+        "training_device": "mps",
+        "precision": "float32",
+        "device_preflight_sha256": "088f46fa4cfb45057d5b7afc7e8f6ec2463b6ec2beeddc694ec1c733e9cfd880"
+      },
+      "model": {
+        "id": "XD-CNN",
+        "topology_sha256": "a26a7b034d686fb9807ce3189910178dac176f8d03a94109255f30e332534ed7"
+      },
+      "training": {
+        "optimizer": "AdamW",
+        "learning_rate": 0.0003,
+        "weight_decay": 0.0001,
+        "batch_size": 256,
+        "gradient_clip": 1.0,
+        "warmup_updates": 100,
+        "max_updates": 1000,
+        "minimum_learning_rate": 3e-05,
+        "validation_interval": 250,
+        "policy_loss": "masked-cross-entropy-nonforced",
+        "value_loss": "binary-cross-entropy",
+        "loss_coefficients": [
+          1.0,
+          1.0
+        ],
+        "shuffle_buffer": 8192,
+        "augmentation": "D6-full-board-with-typed-edge-ports",
+        "categorical_dice": "one-hot-13",
+        "checkpoint_selection": "lowest full unweighted validation policy-NLL plus value-BCE; earliest tie",
+        "augmentation_audit_sha256": "4a9fbd6344d8df5773cbd5363003c88fcfcb5a69f73e2f699b23c0a87db7db8a"
+      },
+      "search": {
+        "c_puct": 1.5,
+        "chance": "true-probability-merged",
+        "opponent": "frozen-MLP-D2-W0",
+        "root_selection": [
+          "visits",
+          "mean_value",
+          "stable_action_id"
+        ],
+        "max_root_depth": 4,
+        "max_actions": 128,
+        "opponent_checkpoint": null
+      },
+      "evaluation": {
+        "opponent": "JSETTLERS",
+        "strategy": "SMART",
+        "primary_budget_ms": 500,
+        "budgets_ms": [
+          100,
+          500,
+          2000
+        ],
+        "simulation_budgets": [
+          128,
+          512,
+          2048
+        ],
+        "smoke_pairs": 20,
+        "screening_pairs": 100,
+        "confirmation_pairs": 500,
+        "max_turns": 1000,
+        "max_actions": 10000,
+        "cutoff_score": 0.5,
+        "paired_seats": true,
+        "final_seed_list": null,
+        "seed_set": "tuning",
+        "tier": "smoke",
+        "mode": "policy",
+        "budget_ms": 500,
+        "simulations": null,
+        "bootstrap_repeats": 5000,
+        "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+        "protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e"
+      },
+      "seed": 11,
+      "candidate": {
+        "key": "NEURAL_POLICY",
+        "checkpoint": null
+      },
+      "opponent": {
+        "key": "JSETTLERS",
+        "checkpoint": null
+      },
+      "phase": 9
+    }
+  },
+  "result": {
+    "validation_run": "runs/catan-ai/phase5q-XD-CNN-seed11-policy-c4f4dc1ad4da-20261113T033836377189Z/run.json",
+    "metrics": {
+      "games": 10,
+      "wins": 2,
+      "losses": 8,
+      "cutoffs": 0,
+      "errors": 0,
+      "illegal_actions": 0,
+      "completed_game_win_rate": 0.2,
+      "overall_match_score": 0.2,
+      "match_score_ci95": [
+        0.0,
+        0.4
+      ],
+      "score_without_cutoffs": 0.2,
+      "seat_specific": {
+        "0": {
+          "games": 5,
+          "wins": 2,
+          "losses": 3,
+          "cutoffs": 0,
+          "errors": 0,
+          "match_score": 0.4
+        },
+        "1": {
+          "games": 5,
+          "wins": 0,
+          "losses": 5,
+          "cutoffs": 0,
+          "errors": 0,
+          "match_score": 0.0
+        }
+      },
+      "turns": {
+        "p50": 156.0,
+        "max": 261
+      },
+      "candidate_latency_all": {
+        "count": 2611,
+        "p50_ms": 4.007500014267862,
+        "p95_ms": 4.927729489281774,
+        "p99_ms": 5.5427583167329475
+      },
+      "candidate_latency_warm_nonforced": {
+        "count": 2040,
+        "p50_ms": 4.146062507061288,
+        "p95_ms": 4.987823541159742,
+        "p99_ms": 5.649466108880006
+      },
+      "candidate_cold_first_decision": {
+        "count": 10,
+        "p50_ms": 4.590875003486872,
+        "p95_ms": 5.50186061009299,
+        "p99_ms": 5.5430057173362
+      },
+      "candidate_decision_seconds": 8.816114538349211,
+      "candidate_decisions_per_second": 296.1622139370369,
+      "candidate_overruns": 0,
+      "native_translation_rejections": 0,
+      "candidate_warm_overruns": 0,
+      "p95_limit_ms": 525.0,
+      "timing_gate_passed": true,
+      "cutoff_gate_passed": true,
+      "failure_gate_passed": true,
+      "lower_bound_above_50_percent": false,
+      "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+      "futility": {
+        "policy": {
+          "version": 1,
+          "enabled": true,
+          "minimum_pairs": 20,
+          "check_every_pairs": 20,
+          "alpha": 0.05,
+          "hopeless_match_score": 0.25,
+          "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+        },
+        "stopped": false,
+        "scheduled_pairs": 5,
+        "observed_pairs": 5
+      }
+    },
+    "baseline_run": "runs/catan-ai/phase5q-XD-CNN-seed11-policy-04ede5330565-20261107T104429406379Z/run.json",
+    "paired_candidate_minus_parent": {
+      "difference": -0.1,
+      "ci95": [
+        -0.3,
+        0.0
+      ]
+    },
+    "scope": "Single-seed 20-game DAgger/1000-update/10-game validation pilot; original phase9 remains incomplete",
+    "installed_default_changed": false,
+    "automatic_scale_up": false,
+    "final_seeds_used": false,
+    "training": {
+      "checkpoint": {
+        "path": "runs/catan-ai/phase9-pilot/best.pt",
+        "sha256": "6567dd42848cb09a44864743eb819b01430980f211afc14c5298745604e25387"
+      },
+      "updates": 1000,
+      "best_step": 0,
+      "best_validation_loss": 1.0904361408448917,
+      "initial_validation": {
+        "rows": 30730,
+        "nonforced": 20756,
+        "policy_nll": 0.6381661842774049,
+        "top1_accuracy": 0.7774619387165157,
+        "value_bce": 0.45226995656748686,
+        "brier": 0.13897185868080833,
+        "by_phase": {
+          "setup": {
+            "count": 624,
+            "nll": 1.562342019035266,
+            "top1_accuracy": 0.5112179487179487
+          },
+          "middle": {
+            "count": 19476,
+            "nll": 0.6028672874671621,
+            "top1_accuracy": 0.7878927911275416
+          },
+          "endgame": {
+            "count": 656,
+            "nll": 0.8070619138093983,
+            "top1_accuracy": 0.7210365853658537
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 385,
+            "nll": 1.021685523104358,
+            "top1_accuracy": 0.5116883116883116
+          },
+          "BUILD_ROAD": {
+            "count": 1275,
+            "nll": 2.366348446864708,
+            "top1_accuracy": 0.26823529411764707
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 716,
+            "nll": 1.6637268438519046,
+            "top1_accuracy": 0.43854748603351956
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1591,
+            "nll": 0.23434204252765733,
+            "top1_accuracy": 0.9421747328724073
+          },
+          "END_TURN": {
+            "count": 5506,
+            "nll": 0.3294945006673872,
+            "top1_accuracy": 0.8957500908100254
+          },
+          "MARITIME_TRADE": {
+            "count": 2796,
+            "nll": 1.2435715570299752,
+            "top1_accuracy": 0.5454220314735336
+          },
+          "MOVE_ROBBER": {
+            "count": 2460,
+            "nll": 0.8571061512319053,
+            "top1_accuracy": 0.6658536585365854
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 837,
+            "nll": 0.27449242485925923,
+            "top1_accuracy": 0.8972520908004779
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 130,
+            "nll": 0.2240834482963412,
+            "top1_accuracy": 0.9153846153846154
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 126,
+            "nll": 2.6494924558533564,
+            "top1_accuracy": 0.06349206349206349
+          },
+          "ROLL": {
+            "count": 4666,
+            "nll": 0.004086456685286699,
+            "top1_accuracy": 0.9991427346763824
+          },
+          "DISCARD_RESOURCE": {
+            "count": 265,
+            "nll": 0.89173791138631,
+            "top1_accuracy": 0.5660377358490566
+          },
+          "PLAY_MONOPOLY": {
+            "count": 3,
+            "nll": 7.822896162668864,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 7381,
+            "mean_probability": 0.02545852328718411,
+            "win_frequency": 0.07505758027367565
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 2211,
+            "mean_probability": 0.1480596644853586,
+            "win_frequency": 0.23156942559927635
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1719,
+            "mean_probability": 0.24888644000345223,
+            "win_frequency": 0.33507853403141363
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1595,
+            "mean_probability": 0.34941573113109625,
+            "win_frequency": 0.3768025078369906
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1650,
+            "mean_probability": 0.4497273231636394,
+            "win_frequency": 0.4781818181818182
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1520,
+            "mean_probability": 0.550532665378169,
+            "win_frequency": 0.5276315789473685
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1509,
+            "mean_probability": 0.6503453212830308,
+            "win_frequency": 0.6242544731610338
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1602,
+            "mean_probability": 0.7523364047060597,
+            "win_frequency": 0.6941323345817728
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 1877,
+            "mean_probability": 0.8523652725036817,
+            "win_frequency": 0.7826318593500267
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 9666,
+            "mean_probability": 0.9790329210955041,
+            "win_frequency": 0.9159942064969998
+          }
+        ],
+        "selection_loss": 1.0904361408448917
+      },
+      "validation_history": [
+        {
+          "step": 250,
+          "rows": 30730,
+          "nonforced": 20756,
+          "policy_nll": 0.6970018973399229,
+          "top1_accuracy": 0.7532761611100405,
+          "value_bce": 0.5221512727422432,
+          "brier": 0.16475466689524648,
+          "by_phase": {
+            "setup": {
+              "count": 624,
+              "nll": 1.6358609749720647,
+              "top1_accuracy": 0.49038461538461536
+            },
+            "middle": {
+              "count": 19476,
+              "nll": 0.6613484565470835,
+              "top1_accuracy": 0.7634011090573013
+            },
+            "endgame": {
+              "count": 656,
+              "nll": 0.8624564810860448,
+              "top1_accuracy": 0.7027439024390244
+            }
+          },
+          "by_family": {
+            "BUILD_CITY": {
+              "count": 385,
+              "nll": 1.0754806972943343,
+              "top1_accuracy": 0.5116883116883116
+            },
+            "BUILD_ROAD": {
+              "count": 1275,
+              "nll": 2.37599791208903,
+              "top1_accuracy": 0.2619607843137255
+            },
+            "BUILD_SETTLEMENT": {
+              "count": 716,
+              "nll": 1.6510495213822947,
+              "top1_accuracy": 0.4664804469273743
+            },
+            "BUY_DEVELOPMENT_CARD": {
+              "count": 1591,
+              "nll": 0.5099553522787927,
+              "top1_accuracy": 0.8453802639849152
+            },
+            "END_TURN": {
+              "count": 5506,
+              "nll": 0.36406827119104307,
+              "top1_accuracy": 0.8763167453686888
+            },
+            "MARITIME_TRADE": {
+              "count": 2796,
+              "nll": 1.3663341898433812,
+              "top1_accuracy": 0.5003576537911302
+            },
+            "MOVE_ROBBER": {
+              "count": 2460,
+              "nll": 0.9217246420015165,
+              "top1_accuracy": 0.6207317073170732
+            },
+            "PLAY_KNIGHT_CARD": {
+              "count": 837,
+              "nll": 0.32129459718044073,
+              "top1_accuracy": 0.8733572281959379
+            },
+            "PLAY_ROAD_BUILDING": {
+              "count": 130,
+              "nll": 0.20093038860851756,
+              "top1_accuracy": 0.9769230769230769
+            },
+            "PLAY_YEAR_OF_PLENTY": {
+              "count": 126,
+              "nll": 2.856910952736461,
+              "top1_accuracy": 0.11904761904761904
+            },
+            "ROLL": {
+              "count": 4666,
+              "nll": 0.00031562851155389986,
+              "top1_accuracy": 1.0
+            },
+            "DISCARD_RESOURCE": {
+              "count": 265,
+              "nll": 0.967851932993475,
+              "top1_accuracy": 0.5094339622641509
+            },
+            "PLAY_MONOPOLY": {
+              "count": 3,
+              "nll": 8.260659535725912,
+              "top1_accuracy": 0.0
+            }
+          },
+          "calibration": [
+            {
+              "low": 0.0,
+              "high": 0.1,
+              "count": 7771,
+              "mean_probability": 0.02482273130352978,
+              "win_frequency": 0.11581521039763222
+            },
+            {
+              "low": 0.1,
+              "high": 0.2,
+              "count": 2105,
+              "mean_probability": 0.1480579142934353,
+              "win_frequency": 0.30783847980997625
+            },
+            {
+              "low": 0.2,
+              "high": 0.3,
+              "count": 1795,
+              "mean_probability": 0.2515752302570927,
+              "win_frequency": 0.4
+            },
+            {
+              "low": 0.3,
+              "high": 0.4,
+              "count": 1655,
+              "mean_probability": 0.34765313415368876,
+              "win_frequency": 0.4664652567975831
+            },
+            {
+              "low": 0.4,
+              "high": 0.5,
+              "count": 1455,
+              "mean_probability": 0.44981220172033276,
+              "win_frequency": 0.49140893470790376
+            },
+            {
+              "low": 0.5,
+              "high": 0.6,
+              "count": 1550,
+              "mean_probability": 0.548983506579553,
+              "win_frequency": 0.5309677419354839
+            },
+            {
+              "low": 0.6,
+              "high": 0.7,
+              "count": 1504,
+              "mean_probability": 0.6491834375848795,
+              "win_frequency": 0.5625
+            },
+            {
+              "low": 0.7,
+              "high": 0.8,
+              "count": 1716,
+              "mean_probability": 0.750975795767524,
+              "win_frequency": 0.6252913752913752
+            },
+            {
+              "low": 0.8,
+              "high": 0.9,
+              "count": 2014,
+              "mean_probability": 0.8536040655373344,
+              "win_frequency": 0.7184707050645481
+            },
+            {
+              "low": 0.9,
+              "high": 1.0,
+              "count": 9165,
+              "mean_probability": 0.975244561479967,
+              "win_frequency": 0.9022367703218767
+            }
+          ],
+          "selection_loss": 1.219153170082166
+        },
+        {
+          "step": 500,
+          "rows": 30730,
+          "nonforced": 20756,
+          "policy_nll": 0.7003042935911551,
+          "top1_accuracy": 0.759346694931586,
+          "value_bce": 0.4992672597764565,
+          "brier": 0.15701999289892538,
+          "by_phase": {
+            "setup": {
+              "count": 624,
+              "nll": 1.660308605967424,
+              "top1_accuracy": 0.4551282051282051
+            },
+            "middle": {
+              "count": 19476,
+              "nll": 0.6643853057799435,
+              "top1_accuracy": 0.7712055863627029
+            },
+            "endgame": {
+              "count": 656,
+              "nll": 0.8535291989583794,
+              "top1_accuracy": 0.6966463414634146
+            }
+          },
+          "by_family": {
+            "BUILD_CITY": {
+              "count": 385,
+              "nll": 1.0625754898244684,
+              "top1_accuracy": 0.4961038961038961
+            },
+            "BUILD_ROAD": {
+              "count": 1275,
+              "nll": 2.8202123684976614,
+              "top1_accuracy": 0.2407843137254902
+            },
+            "BUILD_SETTLEMENT": {
+              "count": 716,
+              "nll": 1.8377359827470514,
+              "top1_accuracy": 0.3812849162011173
+            },
+            "BUY_DEVELOPMENT_CARD": {
+              "count": 1591,
+              "nll": 0.2647410182786917,
+              "top1_accuracy": 0.9472030169704588
+            },
+            "END_TURN": {
+              "count": 5506,
+              "nll": 0.30070525840807083,
+              "top1_accuracy": 0.8786778060297857
+            },
+            "MARITIME_TRADE": {
+              "count": 2796,
+              "nll": 1.3098826358928872,
+              "top1_accuracy": 0.5379113018597997
+            },
+            "MOVE_ROBBER": {
+              "count": 2460,
+              "nll": 0.9550463362437923,
+              "top1_accuracy": 0.6178861788617886
+            },
+            "PLAY_KNIGHT_CARD": {
+              "count": 837,
+              "nll": 0.5394330775466942,
+              "top1_accuracy": 0.8219832735961768
+            },
+            "PLAY_ROAD_BUILDING": {
+              "count": 130,
+              "nll": 0.022503188029021168,
+              "top1_accuracy": 1.0
+            },
+            "PLAY_YEAR_OF_PLENTY": {
+              "count": 126,
+              "nll": 2.6508846732359084,
+              "top1_accuracy": 0.14285714285714285
+            },
+            "ROLL": {
+              "count": 4666,
+              "nll": 0.004104675280768749,
+              "top1_accuracy": 0.9991427346763824
+            },
+            "DISCARD_RESOURCE": {
+              "count": 265,
+              "nll": 1.095596128589702,
+              "top1_accuracy": 0.4641509433962264
+            },
+            "PLAY_MONOPOLY": {
+              "count": 3,
+              "nll": 9.391703446706137,
+              "top1_accuracy": 0.0
+            }
+          },
+          "calibration": [
+            {
+              "low": 0.0,
+              "high": 0.1,
+              "count": 7205,
+              "mean_probability": 0.02402889631290472,
+              "win_frequency": 0.0981263011797363
+            },
+            {
+              "low": 0.1,
+              "high": 0.2,
+              "count": 2034,
+              "mean_probability": 0.14742297015446829,
+              "win_frequency": 0.26450344149459193
+            },
+            {
+              "low": 0.2,
+              "high": 0.3,
+              "count": 1790,
+              "mean_probability": 0.24895387097943428,
+              "win_frequency": 0.3575418994413408
+            },
+            {
+              "low": 0.3,
+              "high": 0.4,
+              "count": 1753,
+              "mean_probability": 0.3505489569831017,
+              "win_frequency": 0.41015402167712495
+            },
+            {
+              "low": 0.4,
+              "high": 0.5,
+              "count": 1490,
+              "mean_probability": 0.4485219528611074,
+              "win_frequency": 0.4825503355704698
+            },
+            {
+              "low": 0.5,
+              "high": 0.6,
+              "count": 1539,
+              "mean_probability": 0.5507747128150772,
+              "win_frequency": 0.5120207927225471
+            },
+            {
+              "low": 0.6,
+              "high": 0.7,
+              "count": 1707,
+              "mean_probability": 0.6493803582557406,
+              "win_frequency": 0.5653192735793791
+            },
+            {
+              "low": 0.7,
+              "high": 0.8,
+              "count": 1715,
+              "mean_probability": 0.7509770206390247,
+              "win_frequency": 0.6623906705539359
+            },
+            {
+              "low": 0.8,
+              "high": 0.9,
+              "count": 2326,
+              "mean_probability": 0.8541710148417324,
+              "win_frequency": 0.7351676698194325
+            },
+            {
+              "low": 0.9,
+              "high": 1.0,
+              "count": 9171,
+              "mean_probability": 0.9733664532508991,
+              "win_frequency": 0.9038272816486752
+            }
+          ],
+          "selection_loss": 1.1995715533676115
+        },
+        {
+          "step": 750,
+          "rows": 30730,
+          "nonforced": 20756,
+          "policy_nll": 0.6925715515668233,
+          "top1_accuracy": 0.760599344767778,
+          "value_bce": 0.5040869749236332,
+          "brier": 0.16076546011839923,
+          "by_phase": {
+            "setup": {
+              "count": 624,
+              "nll": 1.677431243734482,
+              "top1_accuracy": 0.4951923076923077
+            },
+            "middle": {
+              "count": 19476,
+              "nll": 0.6546005473584458,
+              "top1_accuracy": 0.7719244197987266
+            },
+            "endgame": {
+              "count": 656,
+              "nll": 0.8830759718832446,
+              "top1_accuracy": 0.676829268292683
+            }
+          },
+          "by_family": {
+            "BUILD_CITY": {
+              "count": 385,
+              "nll": 0.9661105947448062,
+              "top1_accuracy": 0.5584415584415584
+            },
+            "BUILD_ROAD": {
+              "count": 1275,
+              "nll": 2.6325377318438363,
+              "top1_accuracy": 0.2752941176470588
+            },
+            "BUILD_SETTLEMENT": {
+              "count": 716,
+              "nll": 1.8296307272501497,
+              "top1_accuracy": 0.40083798882681565
+            },
+            "BUY_DEVELOPMENT_CARD": {
+              "count": 1591,
+              "nll": 0.2588423535785047,
+              "top1_accuracy": 0.9270898805782527
+            },
+            "END_TURN": {
+              "count": 5506,
+              "nll": 0.38357234105083493,
+              "top1_accuracy": 0.8572466400290593
+            },
+            "MARITIME_TRADE": {
+              "count": 2796,
+              "nll": 1.317318928258784,
+              "top1_accuracy": 0.5278969957081545
+            },
+            "MOVE_ROBBER": {
+              "count": 2460,
+              "nll": 0.9207148805866396,
+              "top1_accuracy": 0.6296747967479674
+            },
+            "PLAY_KNIGHT_CARD": {
+              "count": 837,
+              "nll": 0.21615853784220646,
+              "top1_accuracy": 0.9283154121863799
+            },
+            "PLAY_ROAD_BUILDING": {
+              "count": 130,
+              "nll": 0.03433074010312199,
+              "top1_accuracy": 1.0
+            },
+            "PLAY_YEAR_OF_PLENTY": {
+              "count": 126,
+              "nll": 2.7727558281686573,
+              "top1_accuracy": 0.1111111111111111
+            },
+            "ROLL": {
+              "count": 4666,
+              "nll": 0.0034625051162270244,
+              "top1_accuracy": 0.9993570510072868
+            },
+            "DISCARD_RESOURCE": {
+              "count": 265,
+              "nll": 1.087949625501093,
+              "top1_accuracy": 0.49056603773584906
+            },
+            "PLAY_MONOPOLY": {
+              "count": 3,
+              "nll": 8.464667797088623,
+              "top1_accuracy": 0.0
+            }
+          },
+          "calibration": [
+            {
+              "low": 0.0,
+              "high": 0.1,
+              "count": 6919,
+              "mean_probability": 0.024211953620652895,
+              "win_frequency": 0.10449486920075156
+            },
+            {
+              "low": 0.1,
+              "high": 0.2,
+              "count": 2013,
+              "mean_probability": 0.1471442582924983,
+              "win_frequency": 0.3035270740188773
+            },
+            {
+              "low": 0.2,
+              "high": 0.3,
+              "count": 1770,
+              "mean_probability": 0.24953384540848814,
+              "win_frequency": 0.34124293785310733
+            },
+            {
+              "low": 0.3,
+              "high": 0.4,
+              "count": 1692,
+              "mean_probability": 0.3503939573505528,
+              "win_frequency": 0.3912529550827423
+            },
+            {
+              "low": 0.4,
+              "high": 0.5,
+              "count": 1651,
+              "mean_probability": 0.4494837693630891,
+              "win_frequency": 0.4149000605693519
+            },
+            {
+              "low": 0.5,
+              "high": 0.6,
+              "count": 1666,
+              "mean_probability": 0.5501443529758705,
+              "win_frequency": 0.5
+            },
+            {
+              "low": 0.6,
+              "high": 0.7,
+              "count": 1798,
+              "mean_probability": 0.6500806100376456,
+              "win_frequency": 0.560622914349277
+            },
+            {
+              "low": 0.7,
+              "high": 0.8,
+              "count": 1904,
+              "mean_probability": 0.7498347919528224,
+              "win_frequency": 0.6418067226890757
+            },
+            {
+              "low": 0.8,
+              "high": 0.9,
+              "count": 2325,
+              "mean_probability": 0.8536614730537578,
+              "win_frequency": 0.7294623655913979
+            },
+            {
+              "low": 0.9,
+              "high": 1.0,
+              "count": 8992,
+              "mean_probability": 0.97310596540093,
+              "win_frequency": 0.9082517793594306
+            }
+          ],
+          "selection_loss": 1.1966585264904563
+        },
+        {
+          "step": 1000,
+          "rows": 30730,
+          "nonforced": 20756,
+          "policy_nll": 0.6758722906559275,
+          "top1_accuracy": 0.7663808055502024,
+          "value_bce": 0.5097066060498993,
+          "brier": 0.15800218131618068,
+          "by_phase": {
+            "setup": {
+              "count": 624,
+              "nll": 1.644855946302414,
+              "top1_accuracy": 0.4951923076923077
+            },
+            "middle": {
+              "count": 19476,
+              "nll": 0.6394676888446882,
+              "top1_accuracy": 0.777623742041487
+            },
+            "endgame": {
+              "count": 656,
+              "nll": 0.834973272027039,
+              "top1_accuracy": 0.6905487804878049
+            }
+          },
+          "by_family": {
+            "BUILD_CITY": {
+              "count": 385,
+              "nll": 1.0240148701451042,
+              "top1_accuracy": 0.5194805194805194
+            },
+            "BUILD_ROAD": {
+              "count": 1275,
+              "nll": 2.664475191527722,
+              "top1_accuracy": 0.2611764705882353
+            },
+            "BUILD_SETTLEMENT": {
+              "count": 716,
+              "nll": 1.799440876565166,
+              "top1_accuracy": 0.40083798882681565
+            },
+            "BUY_DEVELOPMENT_CARD": {
+              "count": 1591,
+              "nll": 0.24162880380683016,
+              "top1_accuracy": 0.9365179132620993
+            },
+            "END_TURN": {
+              "count": 5506,
+              "nll": 0.3427491721633214,
+              "top1_accuracy": 0.87286596440247
+            },
+            "MARITIME_TRADE": {
+              "count": 2796,
+              "nll": 1.279446304441351,
+              "top1_accuracy": 0.5400572246065808
+            },
+            "MOVE_ROBBER": {
+              "count": 2460,
+              "nll": 0.9224571534288608,
+              "top1_accuracy": 0.6321138211382114
+            },
+            "PLAY_KNIGHT_CARD": {
+              "count": 837,
+              "nll": 0.19446175855537715,
+              "top1_accuracy": 0.937873357228196
+            },
+            "PLAY_ROAD_BUILDING": {
+              "count": 130,
+              "nll": 0.10119333047858582,
+              "top1_accuracy": 0.9846153846153847
+            },
+            "PLAY_YEAR_OF_PLENTY": {
+              "count": 126,
+              "nll": 2.640642736166243,
+              "top1_accuracy": 0.14285714285714285
+            },
+            "ROLL": {
+              "count": 4666,
+              "nll": 0.006416957024754494,
+              "top1_accuracy": 0.998928418345478
+            },
+            "DISCARD_RESOURCE": {
+              "count": 265,
+              "nll": 0.9992289302484044,
+              "top1_accuracy": 0.5056603773584906
+            },
+            "PLAY_MONOPOLY": {
+              "count": 3,
+              "nll": 8.997190634409586,
+              "top1_accuracy": 0.0
+            }
+          },
+          "calibration": [
+            {
+              "low": 0.0,
+              "high": 0.1,
+              "count": 7993,
+              "mean_probability": 0.022703516475080766,
+              "win_frequency": 0.11797823095208307
+            },
+            {
+              "low": 0.1,
+              "high": 0.2,
+              "count": 2227,
+              "mean_probability": 0.14864534256058956,
+              "win_frequency": 0.31656937584193984
+            },
+            {
+              "low": 0.2,
+              "high": 0.3,
+              "count": 1816,
+              "mean_probability": 0.24891435586342728,
+              "win_frequency": 0.3766519823788546
+            },
+            {
+              "low": 0.3,
+              "high": 0.4,
+              "count": 1698,
+              "mean_probability": 0.3485453515823654,
+              "win_frequency": 0.40694935217903416
+            },
+            {
+              "low": 0.4,
+              "high": 0.5,
+              "count": 1582,
+              "mean_probability": 0.4500665109694079,
+              "win_frequency": 0.4879898862199747
+            },
+            {
+              "low": 0.5,
+              "high": 0.6,
+              "count": 1563,
+              "mean_probability": 0.5513249955647127,
+              "win_frequency": 0.5591810620601407
+            },
+            {
+              "low": 0.6,
+              "high": 0.7,
+              "count": 1522,
+              "mean_probability": 0.6505714253903062,
+              "win_frequency": 0.6274638633377135
+            },
+            {
+              "low": 0.7,
+              "high": 0.8,
+              "count": 1458,
+              "mean_probability": 0.7499946987841518,
+              "win_frequency": 0.6618655692729767
+            },
+            {
+              "low": 0.8,
+              "high": 0.9,
+              "count": 2096,
+              "mean_probability": 0.8541172467854642,
+              "win_frequency": 0.7528625954198473
+            },
+            {
+              "low": 0.9,
+              "high": 1.0,
+              "count": 8775,
+              "mean_probability": 0.9750709791876312,
+              "win_frequency": 0.9166951566951567
+            }
+          ],
+          "selection_loss": 1.1855788967058267
+        }
+      ],
+      "test": {
+        "rows": 27137,
+        "nonforced": 17849,
+        "policy_nll": 0.6601909020944534,
+        "top1_accuracy": 0.7676620538965768,
+        "value_bce": 0.4874553011588695,
+        "brier": 0.15510577896025277,
+        "by_phase": {
+          "setup": {
+            "count": 568,
+            "nll": 1.507034550250416,
+            "top1_accuracy": 0.5123239436619719
+          },
+          "middle": {
+            "count": 16385,
+            "nll": 0.6212449095618044,
+            "top1_accuracy": 0.7809581934696369
+          },
+          "endgame": {
+            "count": 896,
+            "nll": 0.8355511499373408,
+            "top1_accuracy": 0.6863839285714286
+          }
+        },
+        "by_family": {
+          "BUILD_CITY": {
+            "count": 357,
+            "nll": 1.0458831365744607,
+            "top1_accuracy": 0.47058823529411764
+          },
+          "BUILD_ROAD": {
+            "count": 1132,
+            "nll": 2.3029597479547292,
+            "top1_accuracy": 0.2756183745583039
+          },
+          "BUILD_SETTLEMENT": {
+            "count": 659,
+            "nll": 1.6455913950040462,
+            "top1_accuracy": 0.44461305007587254
+          },
+          "BUY_DEVELOPMENT_CARD": {
+            "count": 1396,
+            "nll": 0.2981053821336916,
+            "top1_accuracy": 0.921919770773639
+          },
+          "END_TURN": {
+            "count": 4512,
+            "nll": 0.31971397213902036,
+            "top1_accuracy": 0.910904255319149
+          },
+          "MARITIME_TRADE": {
+            "count": 2521,
+            "nll": 1.2456098245940763,
+            "top1_accuracy": 0.5374851249504164
+          },
+          "MOVE_ROBBER": {
+            "count": 2239,
+            "nll": 0.8785827282338655,
+            "top1_accuracy": 0.6409111210361769
+          },
+          "PLAY_KNIGHT_CARD": {
+            "count": 746,
+            "nll": 0.2324156574064965,
+            "top1_accuracy": 0.9168900804289544
+          },
+          "PLAY_ROAD_BUILDING": {
+            "count": 115,
+            "nll": 0.17249712380833682,
+            "top1_accuracy": 0.9391304347826087
+          },
+          "ROLL": {
+            "count": 3812,
+            "nll": 0.01231204879624148,
+            "top1_accuracy": 0.9963273871983211
+          },
+          "DISCARD_RESOURCE": {
+            "count": 257,
+            "nll": 0.9195104540554002,
+            "top1_accuracy": 0.5719844357976653
+          },
+          "PLAY_YEAR_OF_PLENTY": {
+            "count": 101,
+            "nll": 2.564875293486189,
+            "top1_accuracy": 0.04950495049504951
+          },
+          "PLAY_MONOPOLY": {
+            "count": 2,
+            "nll": 8.709516525268555,
+            "top1_accuracy": 0.0
+          }
+        },
+        "calibration": [
+          {
+            "low": 0.0,
+            "high": 0.1,
+            "count": 6248,
+            "mean_probability": 0.02552892726925935,
+            "win_frequency": 0.08482714468629962
+          },
+          {
+            "low": 0.1,
+            "high": 0.2,
+            "count": 1913,
+            "mean_probability": 0.1466592106280748,
+            "win_frequency": 0.29848405645582854
+          },
+          {
+            "low": 0.2,
+            "high": 0.3,
+            "count": 1535,
+            "mean_probability": 0.24987392472133574,
+            "win_frequency": 0.3485342019543974
+          },
+          {
+            "low": 0.3,
+            "high": 0.4,
+            "count": 1329,
+            "mean_probability": 0.34932574031046226,
+            "win_frequency": 0.4123401053423627
+          },
+          {
+            "low": 0.4,
+            "high": 0.5,
+            "count": 1436,
+            "mean_probability": 0.45164327587008807,
+            "win_frequency": 0.47284122562674097
+          },
+          {
+            "low": 0.5,
+            "high": 0.6,
+            "count": 1564,
+            "mean_probability": 0.5513344697863855,
+            "win_frequency": 0.5812020460358056
+          },
+          {
+            "low": 0.6,
+            "high": 0.7,
+            "count": 1513,
+            "mean_probability": 0.649714031009901,
+            "win_frequency": 0.5690680766688698
+          },
+          {
+            "low": 0.7,
+            "high": 0.8,
+            "count": 1452,
+            "mean_probability": 0.7506759297256628,
+            "win_frequency": 0.6136363636363636
+          },
+          {
+            "low": 0.8,
+            "high": 0.9,
+            "count": 2037,
+            "mean_probability": 0.8530153013879198,
+            "win_frequency": 0.7083946980854198
+          },
+          {
+            "low": 0.9,
+            "high": 1.0,
+            "count": 8110,
+            "mean_probability": 0.9788037043758444,
+            "win_frequency": 0.9159062885326757
+          }
+        ],
+        "selection_loss": 1.147646203253323
+      },
+      "new_rows": 4213,
+      "expert_fraction": 0.5,
+      "elapsed_seconds": 92.36583779199282,
+      "configuration": {
+        "contract_version": 1,
+        "experiment": "phase9-dagger-pilot",
+        "stage": "dagger-finetuning",
+        "rules": {
+          "players": 2,
+          "colors": [
+            "BLUE",
+            "RED"
+          ],
+          "map": "BASE",
+          "vps_to_win": 15,
+          "discard_limit": 9,
+          "friendly_robber": false,
+          "player_trading": false
+        },
+        "data": {
+          "corpora": [
+            "data/jsettlers-corpora/full-250",
+            "data/jsettlers-corpora/downsampled"
+          ],
+          "source_schema": 2,
+          "source_features": 633,
+          "model_schema": 3,
+          "view": "complete-decisions",
+          "composition": "D2",
+          "weighting": "W0",
+          "additional_training_data": {
+            "source": "phase9 learner-state JSettlers labels",
+            "fraction": 0.5,
+            "manifest_sha256": "3dae26585c8e5e321d1939a81546a719bd369b522c83213713b96a396d0b4ba8",
+            "value_targets": "actual completed learner-game outcomes; censored games excluded"
+          }
+        },
+        "actions": {
+          "count": 332,
+          "coordinates": "absolute",
+          "victim_colors": "absolute",
+          "normalization": "global-legal-softmax"
+        },
+        "value": {
+          "perspective": "decision-actor",
+          "range": [
+            0,
+            1
+          ],
+          "label_conversion": "(value_target + 1) / 2"
+        },
+        "randomness": {
+          "streams": [
+            "board",
+            "simulator",
+            "search",
+            "training",
+            "evaluation"
+          ],
+          "screening_seed": 11,
+          "confirmation_seeds": [
+            11,
+            23,
+            47
+          ]
+        },
+        "runtime": {
+          "framework": "pytorch",
+          "torch_version": "2.15.0",
+          "evaluation_device": "cpu",
+          "benchmark": {
+            "warmup": 10,
+            "repeats": 100,
+            "batch_sizes": [
+              1,
+              32
+            ]
+          },
+          "cpu_threads": 6,
+          "training_device": "mps",
+          "precision": "float32",
+          "device_preflight_sha256": "088f46fa4cfb45057d5b7afc7e8f6ec2463b6ec2beeddc694ec1c733e9cfd880"
+        },
+        "model": {
+          "id": "XD-CNN",
+          "topology_sha256": "a26a7b034d686fb9807ce3189910178dac176f8d03a94109255f30e332534ed7"
+        },
+        "training": {
+          "optimizer": "AdamW",
+          "learning_rate": 0.0003,
+          "weight_decay": 0.0001,
+          "batch_size": 256,
+          "gradient_clip": 1.0,
+          "warmup_updates": 100,
+          "max_updates": 1000,
+          "minimum_learning_rate": 3e-05,
+          "validation_interval": 250,
+          "policy_loss": "masked-cross-entropy-nonforced",
+          "value_loss": "binary-cross-entropy",
+          "loss_coefficients": [
+            1.0,
+            1.0
+          ],
+          "shuffle_buffer": 8192,
+          "augmentation": "D6-full-board-with-typed-edge-ports",
+          "categorical_dice": "one-hot-13",
+          "checkpoint_selection": "lowest full unweighted validation policy-NLL plus value-BCE; earliest tie",
+          "augmentation_audit_sha256": "4a9fbd6344d8df5773cbd5363003c88fcfcb5a69f73e2f699b23c0a87db7db8a"
+        },
+        "search": {
+          "c_puct": 1.5,
+          "chance": "true-probability-merged",
+          "opponent": "frozen-MLP-D2-W0",
+          "root_selection": [
+            "visits",
+            "mean_value",
+            "stable_action_id"
+          ],
+          "max_root_depth": 4,
+          "max_actions": 128,
+          "opponent_checkpoint": null
+        },
+        "evaluation": {
+          "opponent": "JSETTLERS",
+          "strategy": "SMART",
+          "primary_budget_ms": 500,
+          "budgets_ms": [
+            100,
+            500,
+            2000
+          ],
+          "simulation_budgets": [
+            128,
+            512,
+            2048
+          ],
+          "smoke_pairs": 20,
+          "screening_pairs": 100,
+          "confirmation_pairs": 500,
+          "max_turns": 1000,
+          "max_actions": 10000,
+          "cutoff_score": 0.5,
+          "paired_seats": true,
+          "final_seed_list": null,
+          "seed_set": "tuning",
+          "tier": "smoke",
+          "mode": "policy",
+          "budget_ms": 500,
+          "simulations": null,
+          "bootstrap_repeats": 5000,
+          "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+          "protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e"
+        },
+        "seed": 11,
+        "candidate": {
+          "key": "NEURAL_POLICY",
+          "checkpoint": null
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "checkpoint": null
+        },
+        "phase": 9
+      }
+    },
+    "selected_weights_identical_to_parent": true,
+    "baseline_prefix_wins": 3,
+    "interpretation": "Checkpoint selection retained the unchanged parent. The 10-game score difference measures repeated-run variation, not a fine-tuning treatment effect. Final updated weights remain untested in matches."
+  }
+}

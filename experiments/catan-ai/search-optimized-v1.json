@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "revision": "optimized-unbounded-own-actions-v1",
+  "max_root_depth": null,
+  "max_actions": 128,
+  "budget_ms": 500,
+  "workers_by_model": {
+    "MLP": 1,
+    "XD-CNN": 4,
+    "H-GNN": 1,
+    "TRANSFORMER": 1
+  },
+  "parallel_mode": "independent root trees with shared batched inference; visits and values aggregated",
+  "selection_scope": "CNN CPU tested on twelve fixed validation positions; other models retain one worker pending measurement",
+  "benchmark": "runs/catan-ai/search-thread-benchmark.json",
+  "source_sha256": {
+    "agent_apis/stochastic.py": "f96b4e8bc58811ff0df00653c5e5bc4cda1a0b254bc0100c1cafad188e367921",
+    "agent_apis/stochastic_search.py": "63fef840bff4e7ec97d215ce6b65a2c9a53201419260171a35fda69de07b0ed6",
+    "agent_apis/neural/provider.py": "0a8c1075bdf73eebb41ac6628ca23e20c46d25f07c88d04b896337d1f876093b",
+    "agent_apis/neural/parallel_search.py": "ce2cd524ae6f224b0198d441db9faf5d3dc98b16041363c575411976dbb105ca"
+  }
+}

@@ -1,0 +1,577 @@
+{
+  "phase": 3,
+  "gate_passed": true,
+  "scope": "tuning smoke only; final untouched",
+  "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+  "protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e",
+  "post_fix_games": 120,
+  "runs": [
+    {
+      "run_record": "runs/catan-ai/phase3-RANDOM-2fd96178f5f5-20261104T214219642651Z/run.json",
+      "configuration_sha256": "2fd96178f5f542c3a4378b78d22f39530a5ed5a3cbe4b43fe75ff4813d45952d",
+      "candidate": "RANDOM",
+      "status": "completed",
+      "metrics": {
+        "games": 40,
+        "wins": 0,
+        "losses": 40,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.0,
+        "overall_match_score": 0.0,
+        "match_score_ci95": [
+          0.0,
+          0.0
+        ],
+        "score_without_cutoffs": 0.0,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          },
+          "1": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          }
+        },
+        "turns": {
+          "p50": 103.5,
+          "max": 173
+        },
+        "candidate_latency_all": {
+          "count": 5415,
+          "p50_ms": 0.0036659985198639333,
+          "p95_ms": 0.5075000008218922,
+          "p99_ms": 0.6094111215497833
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 1098,
+          "p50_ms": 0.4195834990241565,
+          "p95_ms": 0.606612501724157,
+          "p99_ms": 0.682925731598516
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 0.32658350028214045,
+          "p95_ms": 0.5054142522567415,
+          "p99_ms": 3.6626961207366517
+        },
+        "candidate_decision_seconds": 0.5157135130357346,
+        "candidate_decisions_per_second": 10500.015731844485,
+        "candidate_overruns": 0,
+        "native_translation_rejections": 0,
+        "candidate_warm_overruns": 0,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion."
+      },
+      "provider_identity": {
+        "candidate": {
+          "key": "RANDOM",
+          "implementation": "agent_apis.benchmark:Agent",
+          "sha256": "4941970e17c7cbb3d85c0455d3aeefa567d2f059a772377468ab727f96f75a5f"
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "name": "JSettlers",
+          "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+          "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+          "protocol": "catanotron-observation-v1",
+          "capabilities": [
+            "decide",
+            "sync"
+          ],
+          "sync_endpoint": "/api/agents/JSETTLERS/sync",
+          "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+          "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+          "strategy": "SMART",
+          "engine": "SOCRobotBrain",
+          "jars": {
+            "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+            "jsettlers-adapter.jar": "cc49e2b83073f40c07dde2c8b84cc8a834ced3ec3254825f3e9a64b0a8db56d2"
+          },
+          "java_version": "java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment (build 1.8.0_202-b08)\nJava HotSpot(TM) 64-Bit Server VM (build 25.202-b08, mixed mode)"
+        }
+      },
+      "elapsed_seconds": 105.55751795899414
+    },
+    {
+      "run_record": "runs/catan-ai/phase3-VALUE-6f12a1d375a9-20261104T214023513237Z/run.json",
+      "configuration_sha256": "6f12a1d375a9ba5ea576f3c4a0c10366a03889f4b1671030a5f131044776ae17",
+      "candidate": "VALUE",
+      "status": "completed",
+      "metrics": {
+        "games": 40,
+        "wins": 28,
+        "losses": 12,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.7,
+        "overall_match_score": 0.7,
+        "match_score_ci95": [
+          0.525,
+          0.85
+        ],
+        "score_without_cutoffs": 0.7,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 13,
+            "losses": 7,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.65
+          },
+          "1": {
+            "games": 20,
+            "wins": 15,
+            "losses": 5,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.75
+          }
+        },
+        "turns": {
+          "p50": 105.0,
+          "max": 139
+        },
+        "candidate_latency_all": {
+          "count": 6727,
+          "p50_ms": 0.6446250044973567,
+          "p95_ms": 4.260487502324395,
+          "p99_ms": 6.348177340842083
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 3800,
+          "p50_ms": 1.1249794988543727,
+          "p95_ms": 5.030608945889979,
+          "p99_ms": 7.5358300051448
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 5.142624999280088,
+          "p95_ms": 5.945988952225888,
+          "p99_ms": 6.308168749164906
+        },
+        "candidate_decision_seconds": 7.001399120686983,
+        "candidate_decisions_per_second": 960.807959101172,
+        "candidate_overruns": 0,
+        "native_translation_rejections": 45,
+        "candidate_warm_overruns": 0,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": true,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion."
+      },
+      "provider_identity": {
+        "candidate": {
+          "key": "VALUE",
+          "implementation": "agent_apis.benchmark:Agent",
+          "sha256": "4941970e17c7cbb3d85c0455d3aeefa567d2f059a772377468ab727f96f75a5f",
+          "framework_value_sha256": "22d207049f55247e314513adfa5a23c52e998578a81cdff44094f91429903e6b",
+          "weights": {
+            "public_vps": 300000000000000.0,
+            "production": 100000000.0,
+            "enemy_production": -100000000.0,
+            "num_tiles": 1,
+            "reachable_production_0": 0,
+            "reachable_production_1": 10000.0,
+            "buildable_nodes": 1000.0,
+            "longest_road": 10,
+            "hand_synergy": 100.0,
+            "hand_resources": 1,
+            "discard_penalty": -5,
+            "hand_devs": 10,
+            "army_size": 10.1
+          },
+          "variant": "Independent-future afterstates; neutral hidden development draw; framework base_fn weights"
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "name": "JSettlers",
+          "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+          "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+          "protocol": "catanotron-observation-v1",
+          "capabilities": [
+            "decide",
+            "sync"
+          ],
+          "sync_endpoint": "/api/agents/JSETTLERS/sync",
+          "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+          "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+          "strategy": "SMART",
+          "engine": "SOCRobotBrain",
+          "jars": {
+            "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+            "jsettlers-adapter.jar": "cc49e2b83073f40c07dde2c8b84cc8a834ced3ec3254825f3e9a64b0a8db56d2"
+          },
+          "java_version": "java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment (build 1.8.0_202-b08)\nJava HotSpot(TM) 64-Bit Server VM (build 25.202-b08, mixed mode)"
+        }
+      },
+      "elapsed_seconds": 106.26902612499543
+    },
+    {
+      "run_record": "runs/catan-ai/phase3-VALUE-6f12a1d375a9-20261104T214415684646Z/run.json",
+      "configuration_sha256": "6f12a1d375a9ba5ea576f3c4a0c10366a03889f4b1671030a5f131044776ae17",
+      "candidate": "VALUE",
+      "status": "completed",
+      "metrics": {
+        "games": 40,
+        "wins": 24,
+        "losses": 16,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.6,
+        "overall_match_score": 0.6,
+        "match_score_ci95": [
+          0.45,
+          0.75
+        ],
+        "score_without_cutoffs": 0.6,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 11,
+            "losses": 9,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.55
+          },
+          "1": {
+            "games": 20,
+            "wins": 13,
+            "losses": 7,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.65
+          }
+        },
+        "turns": {
+          "p50": 111.0,
+          "max": 159
+        },
+        "candidate_latency_all": {
+          "count": 7108,
+          "p50_ms": 0.6646460024057887,
+          "p95_ms": 4.009179598506306,
+          "p99_ms": 6.181134318467263
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 4033,
+          "p50_ms": 1.1112499996670522,
+          "p95_ms": 4.869017002056352,
+          "p99_ms": 7.146990439214262
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 5.159313004696742,
+          "p95_ms": 5.534359801094979,
+          "p99_ms": 5.8763782515597995
+        },
+        "candidate_decision_seconds": 7.230692037926929,
+        "candidate_decisions_per_second": 983.0317710554708,
+        "candidate_overruns": 0,
+        "native_translation_rejections": 18,
+        "candidate_warm_overruns": 0,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion."
+      },
+      "provider_identity": {
+        "candidate": {
+          "key": "VALUE",
+          "implementation": "agent_apis.benchmark:Agent",
+          "sha256": "4941970e17c7cbb3d85c0455d3aeefa567d2f059a772377468ab727f96f75a5f",
+          "framework_value_sha256": "22d207049f55247e314513adfa5a23c52e998578a81cdff44094f91429903e6b",
+          "weights": {
+            "public_vps": 300000000000000.0,
+            "production": 100000000.0,
+            "enemy_production": -100000000.0,
+            "num_tiles": 1,
+            "reachable_production_0": 0,
+            "reachable_production_1": 10000.0,
+            "buildable_nodes": 1000.0,
+            "longest_road": 10,
+            "hand_synergy": 100.0,
+            "hand_resources": 1,
+            "discard_penalty": -5,
+            "hand_devs": 10,
+            "army_size": 10.1
+          },
+          "variant": "Independent-future afterstates; neutral hidden development draw; framework base_fn weights"
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "name": "JSettlers",
+          "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+          "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+          "protocol": "catanotron-observation-v1",
+          "capabilities": [
+            "decide",
+            "sync"
+          ],
+          "sync_endpoint": "/api/agents/JSETTLERS/sync",
+          "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+          "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+          "strategy": "SMART",
+          "engine": "SOCRobotBrain",
+          "jars": {
+            "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+            "jsettlers-adapter.jar": "cc49e2b83073f40c07dde2c8b84cc8a834ced3ec3254825f3e9a64b0a8db56d2"
+          },
+          "java_version": "java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment (build 1.8.0_202-b08)\nJava HotSpot(TM) 64-Bit Server VM (build 25.202-b08, mixed mode)"
+        }
+      },
+      "elapsed_seconds": 108.18255824999505
+    }
+  ],
+  "preserved_pre_fix_runs": [
+    {
+      "run_record": "runs/catan-ai/phase3-RANDOM-2fd96178f5f5-20261104T213311863095Z/run.json",
+      "configuration_sha256": "2fd96178f5f542c3a4378b78d22f39530a5ed5a3cbe4b43fe75ff4813d45952d",
+      "candidate": "RANDOM",
+      "status": "completed",
+      "metrics": {
+        "games": 40,
+        "wins": 0,
+        "losses": 40,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.0,
+        "overall_match_score": 0.0,
+        "match_score_ci95": [
+          0.0,
+          0.0
+        ],
+        "score_without_cutoffs": 0.0,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          },
+          "1": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          }
+        },
+        "turns": {
+          "p50": 108.5,
+          "max": 173
+        },
+        "candidate_latency_all": {
+          "count": 5497,
+          "p50_ms": 0.0037909994716756046,
+          "p95_ms": 0.5183829984162002,
+          "p99_ms": 0.6283763205283321
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 1133,
+          "p50_ms": 0.425375001213979,
+          "p95_ms": 0.6265665986575184,
+          "p99_ms": 1.5701521202573359
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 0.3178544975526165,
+          "p95_ms": 0.5126711515913484,
+          "p99_ms": 0.8716131191613383
+        },
+        "candidate_decision_seconds": 0.5694544136931654,
+        "candidate_decisions_per_second": 9653.099296130673,
+        "candidate_overruns": 0,
+        "candidate_warm_overruns": 0,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion."
+      },
+      "provider_identity": {
+        "candidate": {
+          "key": "RANDOM",
+          "implementation": "agent_apis.benchmark:Agent",
+          "sha256": "35b968c0271ff639b734b59a5c167c15ec31a468e2a5be7734c38958ae1a4102"
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "name": "JSettlers",
+          "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+          "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+          "protocol": "catanotron-observation-v1",
+          "capabilities": [
+            "decide",
+            "sync"
+          ],
+          "sync_endpoint": "/api/agents/JSETTLERS/sync",
+          "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+          "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+          "strategy": "SMART",
+          "engine": "SOCRobotBrain",
+          "jars": {
+            "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+            "jsettlers-adapter.jar": "0a5b3449997a3f718a74fc2e956ceb7a43cad34eeda2d513f86c702c92158570"
+          }
+        }
+      },
+      "elapsed_seconds": 107.03483374999632
+    },
+    {
+      "run_record": "runs/catan-ai/phase3-VALUE-6f12a1d375a9-20261104T213528912227Z/run.json",
+      "configuration_sha256": "6f12a1d375a9ba5ea576f3c4a0c10366a03889f4b1671030a5f131044776ae17",
+      "candidate": "VALUE",
+      "status": "failed",
+      "metrics": {
+        "games": 40,
+        "wins": 26,
+        "losses": 13,
+        "cutoffs": 0,
+        "errors": 1,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.6666666666666666,
+        "overall_match_score": 0.65,
+        "match_score_ci95": [
+          0.5,
+          0.775
+        ],
+        "score_without_cutoffs": 0.65,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 12,
+            "losses": 7,
+            "cutoffs": 0,
+            "errors": 1,
+            "match_score": 0.6
+          },
+          "1": {
+            "games": 20,
+            "wins": 14,
+            "losses": 6,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.7
+          }
+        },
+        "turns": {
+          "p50": 105.5,
+          "max": 159
+        },
+        "candidate_latency_all": {
+          "count": 6827,
+          "p50_ms": 0.6606250026379712,
+          "p95_ms": 4.282154399697901,
+          "p99_ms": 6.36929566127946
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 3850,
+          "p50_ms": 1.1326664971420541,
+          "p95_ms": 5.0522813995485185,
+          "p99_ms": 7.768332241030251
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 5.184666999412002,
+          "p95_ms": 5.8416996496816855,
+          "p99_ms": 6.940225356083828
+        },
+        "candidate_decision_seconds": 7.205096233425138,
+        "candidate_decisions_per_second": 947.5237774519773,
+        "candidate_overruns": 0,
+        "candidate_warm_overruns": 0,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": false,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion."
+      },
+      "provider_identity": {
+        "candidate": {
+          "key": "VALUE",
+          "implementation": "agent_apis.benchmark:Agent",
+          "sha256": "ad13e04e4cc01a87b145cfb61cc9bff1d8d7e0ce4e7f61758f63accf2bd1a85a",
+          "framework_value_sha256": "22d207049f55247e314513adfa5a23c52e998578a81cdff44094f91429903e6b",
+          "weights": {
+            "public_vps": 300000000000000.0,
+            "production": 100000000.0,
+            "enemy_production": -100000000.0,
+            "num_tiles": 1,
+            "reachable_production_0": 0,
+            "reachable_production_1": 10000.0,
+            "buildable_nodes": 1000.0,
+            "longest_road": 10,
+            "hand_synergy": 100.0,
+            "hand_resources": 1,
+            "discard_penalty": -5,
+            "hand_devs": 10,
+            "army_size": 10.1
+          },
+          "variant": "Independent-future afterstates; neutral hidden development draw; framework base_fn weights"
+        },
+        "opponent": {
+          "key": "JSETTLERS",
+          "name": "JSettlers",
+          "description": "Full JSettlers SOCRobotBrain with SMART planning, native trading, and synchronized per-seat board state.",
+          "implementation": "agent_apis.jsettlers.player:JSettlersPlayer",
+          "protocol": "catanotron-observation-v1",
+          "capabilities": [
+            "decide",
+            "sync"
+          ],
+          "sync_endpoint": "/api/agents/JSETTLERS/sync",
+          "source_sha256": "d22130842f15a4d95a7ded8f022bf5a1c92f758412f6c5056612b8cd6fa26196",
+          "revision": "7a756baac6ad675f0930605bfb3a8e1bd7a796a5",
+          "strategy": "SMART",
+          "engine": "SOCRobotBrain",
+          "jars": {
+            "gson-2.8.6.jar": "c8fb4839054d280b3033f800d1f5a97de2f028eb8ba2eb458ad287e536f3f25f",
+            "jsettlers-adapter.jar": "0a5b3449997a3f718a74fc2e956ceb7a43cad34eeda2d513f86c702c92158570"
+          },
+          "java_version": "java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment (build 1.8.0_202-b08)\nJava HotSpot(TM) 64-Bit Server VM (build 25.202-b08, mixed mode)"
+        }
+      },
+      "elapsed_seconds": 107.95084045899421
+    }
+  ],
+  "repeat_analysis": {
+    "method": "paired percentile bootstrap by board/seat pair; 5000 draws; analysis seed 11",
+    "value_B_minus_A": {
+      "difference": -0.1,
+      "ci95": [
+        -0.225,
+        0.025
+      ]
+    }
+  },
+  "tests_passed": 27,
+  "confirmation_claim": false
+}

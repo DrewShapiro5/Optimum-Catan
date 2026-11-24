@@ -1,0 +1,333 @@
+{
+  "phase5_complete": false,
+  "evaluation_stopped_by_user": true,
+  "all_four_seed11_training_runs_complete": true,
+  "models_evaluated": [
+    "MLP"
+  ],
+  "final_seeds_used": false,
+  "trajectory_hashes_verified": 287,
+  "runs": {
+    "NEURAL_POLICY": {
+      "folder": "runs/catan-ai/phase3-NEURAL_POLICY-d06afbec8658-20261105T013753865136Z",
+      "games_sha256": "d034cb5c71ca7b0fa6b33017c6ab34c7b187c3556a985dfe2c1a368808bbd0be",
+      "timings_sha256": "550c5e18d656f6c853584a7127992a23b9c2b1abfd99b6ad3250099a7d939752",
+      "trajectory_hashes_verified": 200,
+      "summary": {
+        "games": 200,
+        "wins": 0,
+        "losses": 200,
+        "errors": 0,
+        "cutoffs": 0,
+        "vp_margin_mean": -11.34,
+        "vp_margin_median": -12.0,
+        "candidate_vp_histogram": {
+          "2": 56,
+          "3": 54,
+          "4": 41,
+          "5": 25,
+          "6": 11,
+          "7": 6,
+          "8": 1,
+          "9": 3,
+          "10": 3
+        },
+        "mean_turns": 119.36,
+        "seats": {
+          "0": {
+            "games": 100,
+            "mean_candidate_vp": 3.64,
+            "mean_vp_margin": -11.39
+          },
+          "1": {
+            "games": 100,
+            "mean_candidate_vp": 3.72,
+            "mean_vp_margin": -11.29
+          }
+        },
+        "candidate": {
+          "mean_vp": 3.68,
+          "mean_settlements": 1.54,
+          "mean_cities": 0.54,
+          "mean_roads": 2.74,
+          "mean_resource_cards": 5.295,
+          "mean_longest_road_length": 1.545,
+          "actions_per_game": {
+            "BUILD_SETTLEMENT": 2.08,
+            "BUILD_ROAD": 2.74,
+            "ROLL": 58.93,
+            "BUY_DEVELOPMENT_CARD": 5.1,
+            "END_TURN": 58.93,
+            "MOVE_ROBBER": 11.07,
+            "MARITIME_TRADE": 8.875,
+            "PLAY_KNIGHT_CARD": 1.32,
+            "DISCARD_RESOURCE": 4.675,
+            "BUILD_CITY": 0.54,
+            "PLAY_ROAD_BUILDING": 0.37
+          },
+          "end_turn_opportunities": {
+            "end_turns": 11786,
+            "end_with_settlement_or_city_available": 78,
+            "end_with_any_build_available": 3225,
+            "end_with_development_card_available": 0
+          },
+          "opening_cards_per_roll": 0.4815277777777778,
+          "opening_resource_production": {
+            "WOOD": 0.10597222222222222,
+            "BRICK": 0.07736111111111112,
+            "SHEEP": 0.11069444444444444,
+            "WHEAT": 0.10916666666666666,
+            "ORE": 0.07833333333333334
+          },
+          "opening_missing_wood_or_brick_games": 108
+        },
+        "opponent": {
+          "mean_vp": 15.02,
+          "mean_settlements": 1.81,
+          "mean_cities": 3.615,
+          "mean_roads": 7.99,
+          "mean_resource_cards": 4.785,
+          "mean_longest_road_length": 5.44,
+          "actions_per_game": {
+            "BUILD_SETTLEMENT": 5.425,
+            "BUILD_ROAD": 7.99,
+            "ROLL": 59.425,
+            "END_TURN": 58.43,
+            "MARITIME_TRADE": 19.575,
+            "BUY_DEVELOPMENT_CARD": 9.7,
+            "MOVE_ROBBER": 15.205,
+            "PLAY_KNIGHT_CARD": 5.105,
+            "PLAY_MONOPOLY": 0.035,
+            "PLAY_YEAR_OF_PLENTY": 0.73,
+            "PLAY_ROAD_BUILDING": 0.88,
+            "BUILD_CITY": 3.615,
+            "DISCARD_RESOURCE": 2.105
+          },
+          "end_turn_opportunities": {
+            "end_turns": 11686,
+            "end_with_settlement_or_city_available": 165,
+            "end_with_any_build_available": 2253,
+            "end_with_development_card_available": 526
+          },
+          "opening_cards_per_roll": 0.5863888888888888,
+          "opening_resource_production": {
+            "WOOD": 0.12388888888888888,
+            "BRICK": 0.08402777777777777,
+            "SHEEP": 0.12069444444444444,
+            "WHEAT": 0.14055555555555554,
+            "ORE": 0.11722222222222221
+          },
+          "opening_missing_wood_or_brick_games": 94
+        },
+        "own_play_value_samples": {
+          "1": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.3370076365768909,
+            "mean_actual_vp": 2,
+            "mean_opponent_vp": 2.05
+          },
+          "10": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.32243442283943297,
+            "mean_actual_vp": 2.5,
+            "mean_opponent_vp": 2.5
+          },
+          "20": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.33164274400332944,
+            "mean_actual_vp": 2.95,
+            "mean_opponent_vp": 3.55
+          },
+          "40": {
+            "count": 19,
+            "mean_predicted_win_probability": 0.14873798693358703,
+            "mean_actual_vp": 3.789473684210526,
+            "mean_opponent_vp": 7
+          }
+        },
+        "frozen_opponent_agreement": {
+          "nonforced": {
+            "samples": 296,
+            "top1_accuracy": 0.6621621621621622,
+            "mean_target_probability": 0.5830911769990443
+          },
+          "nonforced_excluding_roll": {
+            "samples": 218,
+            "top1_accuracy": 0.5412844036697247,
+            "mean_target_probability": 0.49115025252028055
+          }
+        }
+      }
+    },
+    "NEURAL_SEARCH": {
+      "folder": "runs/catan-ai/phase3-NEURAL_SEARCH-d65c6940b25c-20261105T023015380126Z",
+      "games_sha256": "3110068cab93e253d302583e35054fb06b288dbd55dd7890b4f2175abddf253b",
+      "timings_sha256": "a1a1c0201f55c993a4b9eb308351395b74a1a3ddc2195beb2a093d8f6364afa5",
+      "trajectory_hashes_verified": 87,
+      "summary": {
+        "games": 87,
+        "wins": 0,
+        "losses": 87,
+        "errors": 0,
+        "cutoffs": 0,
+        "vp_margin_mean": -10.96551724137931,
+        "vp_margin_median": -11,
+        "candidate_vp_histogram": {
+          "2": 18,
+          "3": 24,
+          "4": 16,
+          "5": 11,
+          "6": 10,
+          "7": 2,
+          "8": 5,
+          "10": 1
+        },
+        "mean_turns": 120.08045977011494,
+        "seats": {
+          "0": {
+            "games": 43,
+            "mean_candidate_vp": 3.86046511627907,
+            "mean_vp_margin": -11.13953488372093
+          },
+          "1": {
+            "games": 44,
+            "mean_candidate_vp": 4.204545454545454,
+            "mean_vp_margin": -10.795454545454545
+          }
+        },
+        "candidate": {
+          "mean_vp": 4.0344827586206895,
+          "mean_settlements": 1.3908045977011494,
+          "mean_cities": 0.7471264367816092,
+          "mean_roads": 2.8275862068965516,
+          "mean_resource_cards": 5.850574712643678,
+          "mean_longest_road_length": 1.7011494252873562,
+          "actions_per_game": {
+            "BUILD_SETTLEMENT": 2.1379310344827585,
+            "BUILD_ROAD": 2.8275862068965516,
+            "ROLL": 59.28735632183908,
+            "END_TURN": 59.28735632183908,
+            "MOVE_ROBBER": 10.781609195402298,
+            "MARITIME_TRADE": 8.206896551724139,
+            "DISCARD_RESOURCE": 7.413793103448276,
+            "BUY_DEVELOPMENT_CARD": 5.551724137931035,
+            "PLAY_KNIGHT_CARD": 1.2528735632183907,
+            "PLAY_ROAD_BUILDING": 0.40229885057471265,
+            "BUILD_CITY": 0.7471264367816092,
+            "PLAY_YEAR_OF_PLENTY": 0.011494252873563218,
+            "PLAY_MONOPOLY": 0.011494252873563218
+          },
+          "end_turn_opportunities": {
+            "end_turns": 5158,
+            "end_with_settlement_or_city_available": 0,
+            "end_with_any_build_available": 1486,
+            "end_with_development_card_available": 0
+          },
+          "opening_cards_per_roll": 0.4843550446998723,
+          "opening_resource_production": {
+            "WOOD": 0.08908045977011494,
+            "BRICK": 0.09163473818646233,
+            "SHEEP": 0.09610472541507024,
+            "WHEAT": 0.10632183908045977,
+            "ORE": 0.101213282247765
+          },
+          "opening_missing_wood_or_brick_games": 43
+        },
+        "opponent": {
+          "mean_vp": 15,
+          "mean_settlements": 1.793103448275862,
+          "mean_cities": 3.5977011494252875,
+          "mean_roads": 8.03448275862069,
+          "mean_resource_cards": 4.563218390804598,
+          "mean_longest_road_length": 5.494252873563219,
+          "actions_per_game": {
+            "BUILD_SETTLEMENT": 5.390804597701149,
+            "BUILD_ROAD": 8.03448275862069,
+            "ROLL": 59.793103448275865,
+            "END_TURN": 58.793103448275865,
+            "MARITIME_TRADE": 20.333333333333332,
+            "BUY_DEVELOPMENT_CARD": 9.540229885057471,
+            "MOVE_ROBBER": 15.022988505747126,
+            "PLAY_KNIGHT_CARD": 4.735632183908046,
+            "PLAY_YEAR_OF_PLENTY": 0.7816091954022989,
+            "BUILD_CITY": 3.5977011494252875,
+            "PLAY_ROAD_BUILDING": 0.9540229885057471,
+            "DISCARD_RESOURCE": 2.3448275862068964,
+            "PLAY_MONOPOLY": 0.08045977011494253
+          },
+          "end_turn_opportunities": {
+            "end_turns": 5115,
+            "end_with_settlement_or_city_available": 66,
+            "end_with_any_build_available": 915,
+            "end_with_development_card_available": 257
+          },
+          "opening_cards_per_roll": 0.5826947637292464,
+          "opening_resource_production": {
+            "WOOD": 0.12707535121328226,
+            "BRICK": 0.06960408684546615,
+            "SHEEP": 0.1388888888888889,
+            "WHEAT": 0.13409961685823754,
+            "ORE": 0.11302681992337164
+          },
+          "opening_missing_wood_or_brick_games": 51
+        },
+        "own_play_value_samples": {
+          "1": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.6705037698149681,
+            "mean_actual_vp": 2.05,
+            "mean_opponent_vp": 2
+          },
+          "10": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.5936186575330794,
+            "mean_actual_vp": 2.4,
+            "mean_opponent_vp": 2.7
+          },
+          "20": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.534962882194668,
+            "mean_actual_vp": 2.8,
+            "mean_opponent_vp": 3.65
+          },
+          "40": {
+            "count": 20,
+            "mean_predicted_win_probability": 0.20474983258845897,
+            "mean_actual_vp": 3.5,
+            "mean_opponent_vp": 8.4
+          }
+        },
+        "frozen_opponent_agreement": {
+          "nonforced": {
+            "samples": 269,
+            "top1_accuracy": 0.6951672862453532,
+            "mean_target_probability": 0.6009824774398144
+          },
+          "nonforced_excluding_roll": {
+            "samples": 198,
+            "top1_accuracy": 0.5858585858585859,
+            "mean_target_probability": 0.4904560048647658
+          }
+        }
+      }
+    }
+  },
+  "matched_comparison": {
+    "complete_pairs": 43,
+    "games": 86,
+    "policy_candidate_vp": 4.0813953488372094,
+    "search_candidate_vp": 4.034883720930233,
+    "search_minus_policy_margin": -0.023255813953488372
+  },
+  "source_sha256": {
+    "agent_apis/neural/diagnose.py": "522b083fcac06213260946649cd23828ed9f0bfccf9b8007611d92c1ff063099",
+    "agent_apis/futility.py": "8552e0c9187e1bbc7aa293a2c62081f6e3684a440830d8e944dfe168a03645c7",
+    "agent_apis/benchmark.py": "1504ce84e4543fe43686837a6ef57c754acc1cc37aa49bd94840b1d45b3ad840",
+    "agent_apis/neural/pipeline.py": "0a1b5bbfe32a940d350b3397b89a64d9e72b94f89077fd44bcf60bbaa7759fec"
+  },
+  "validation": {
+    "tests_passed": 67,
+    "test_log": "runs/catan-ai/phase5-diagnosis-tests.log",
+    "test_log_sha256": "bd400a8a3e745b1b2adc0479c8e0ae35457d9db602c70cc1ee571cf7050ae1f6"
+  }
+}

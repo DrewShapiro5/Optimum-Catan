@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "old_sha256": "64e86826b15d3d51b1146bc501184060f10150d87c5f44dffd6d05f180f800a9",
+  "new_sha256": "e4126270b2b86fba2bbee3f6283e153688d131622f08b54c993d03c09b343303",
+  "reason": "Replace recursive posterior traversal with an explicit stack; preserve transitions, sum order, and RNG consumption",
+  "exact_failing_observation": "runs/catan-ai/cnn-search-recursion-observation.json",
+  "original_posterior_evidence": 3.2373164692453957e-10,
+  "seeded_worlds_verified_identical": 20,
+  "deep_caller_frames_tested": 30,
+  "neural_search_regression_simulations": 2,
+  "neural_search_regression_action": [
+    "RED",
+    "ROLL",
+    null
+  ],
+  "historical_search_results": "Retain as historical controls only, never promote the failed CNN search or silently pool it with corrected runs",
+  "rerun_policy": "Rerun CNN search under corrected implementation because time-budgeted simulation counts may change; reuse unaffected pure-policy runs",
+  "repository_tests_passed": 75,
+  "search_audit_run": "runs/catan-ai/phase4-validation-e6f29e48626c-20261105T232239578183Z/run.json",
+  "search_audit_sha256": "7eff5e6282f138fc06b2d5c8bbed10513b5ccbbd14e2586eed5d2f41303f111a",
+  "search_audit_positions": 1000,
+  "search_audit_gate_passed": true
+}

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "rules": {
+    "players": 2,
+    "colors": [
+      "BLUE",
+      "RED"
+    ],
+    "map": "BASE",
+    "vps_to_win": 15,
+    "discard_limit": 9,
+    "friendly_robber": false,
+    "player_trading": false
+  },
+  "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+  "schedule": {
+    "smoke_pairs": 20,
+    "screening_pairs": 100,
+    "expanded_tuning_pairs": 500,
+    "final_confirmation_pairs": 500,
+    "training_seeds": [
+      11,
+      23,
+      47
+    ]
+  },
+  "final_reserved_until_phase": 10,
+  "primary_budget_ms": 500,
+  "budgets_ms": [
+    100,
+    500,
+    2000
+  ],
+  "simulations": [
+    128,
+    512,
+    2048
+  ],
+  "max_turns": 1000,
+  "max_actions": 10000,
+  "cutoff_score": 0.5,
+  "bootstrap": {
+    "method": "percentile-cluster-by-board-seat-pair",
+    "confidence": 0.95,
+    "repeats": 5000,
+    "hierarchical": "training-seed-then-shared-board-pairs"
+  },
+  "failures": "invalid game, zero candidate credit, no win, block promotion; no retries or fallback",
+  "timing": {
+    "scope": "whole agent decision including observation, conversion, inference/search and selection; excludes opponent and authoritative execute",
+    "cold": "initialization plus first nonforced decision separately per game/seat",
+    "primary_latency": "warm nonforced candidate decisions",
+    "forced": "return immediately",
+    "p95_tolerance_ms": "max(20,5% budget)",
+    "overrun": "every decision greater than budget logged",
+    "execution": "serial with exclusive harness lock; no competing accelerator jobs"
+  },
+  "promotion": {
+    "max_cutoff_fraction": 0.01,
+    "zero_illegal_actions": true,
+    "zero_errors": true,
+    "superiority_lower_ci": 0.5
+  },
+  "baseline_heuristic": "Framework base_fn weights, independent sampled futures, neutral hidden dev draw; diagnostic variant, no authoritative future RNG/deck"
+}

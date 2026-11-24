@@ -1,0 +1,203 @@
+{
+  "contract_version": 1,
+  "experiment": "phase6-D0-W0-validation",
+  "stage": "benchmark",
+  "rules": {
+    "players": 2,
+    "colors": [
+      "BLUE",
+      "RED"
+    ],
+    "map": "BASE",
+    "vps_to_win": 15,
+    "discard_limit": 9,
+    "friendly_robber": false,
+    "player_trading": false
+  },
+  "data": {
+    "corpora": [
+      "data/jsettlers-corpora/full-250"
+    ],
+    "source_schema": 2,
+    "source_features": 633,
+    "model_schema": 3,
+    "view": "complete-decisions",
+    "composition": "D0",
+    "weighting": "W0",
+    "value_weighting": "V0"
+  },
+  "actions": {
+    "count": 332,
+    "coordinates": "absolute",
+    "victim_colors": "absolute",
+    "normalization": "global-legal-softmax"
+  },
+  "value": {
+    "perspective": "decision-actor",
+    "range": [
+      0,
+      1
+    ],
+    "label_conversion": "(value_target + 1) / 2"
+  },
+  "randomness": {
+    "streams": [
+      "board",
+      "simulator",
+      "search",
+      "training",
+      "evaluation"
+    ],
+    "screening_seed": 11,
+    "confirmation_seeds": [
+      11,
+      23,
+      47
+    ]
+  },
+  "runtime": {
+    "framework": "pytorch",
+    "torch_version": "2.15.0",
+    "evaluation_device": "cpu",
+    "benchmark": {
+      "warmup": 10,
+      "repeats": 100,
+      "batch_sizes": [
+        1,
+        32
+      ]
+    },
+    "cpu_threads": 6,
+    "training_device": "mps",
+    "precision": "float32",
+    "device_preflight_sha256": "088f46fa4cfb45057d5b7afc7e8f6ec2463b6ec2beeddc694ec1c733e9cfd880"
+  },
+  "model": {
+    "id": "XD-CNN",
+    "topology_sha256": "a26a7b034d686fb9807ce3189910178dac176f8d03a94109255f30e332534ed7"
+  },
+  "training": {
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "batch_size": 256,
+    "gradient_clip": 1.0,
+    "warmup_updates": 500,
+    "max_updates": 20000,
+    "minimum_learning_rate": 3e-05,
+    "validation_interval": 1000,
+    "policy_loss": "masked-cross-entropy-nonforced",
+    "value_loss": "binary-cross-entropy",
+    "loss_coefficients": [
+      1.0,
+      1.0
+    ],
+    "shuffle_buffer": 8192,
+    "augmentation": "D6-full-board-with-typed-edge-ports",
+    "categorical_dice": "one-hot-13",
+    "checkpoint_selection": "lowest full unweighted validation policy-NLL plus value-BCE; earliest tie",
+    "augmentation_audit_sha256": "4a9fbd6344d8df5773cbd5363003c88fcfcb5a69f73e2f699b23c0a87db7db8a",
+    "validation_distribution": "common full unweighted D2 validation; no test-based selection"
+  },
+  "search": {
+    "c_puct": 1.5,
+    "chance": "true-probability-merged",
+    "opponent": "frozen-MLP-D2-W0",
+    "root_selection": [
+      "visits",
+      "mean_value",
+      "stable_action_id"
+    ],
+    "max_root_depth": null,
+    "max_actions": 128,
+    "opponent_checkpoint": {
+      "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+      "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+    },
+    "workers": 4,
+    "revision": "optimized-unbounded-own-actions-v1"
+  },
+  "evaluation": {
+    "opponent": "RANDOM",
+    "strategy": "SMART",
+    "primary_budget_ms": 500,
+    "budgets_ms": [
+      100,
+      500,
+      2000
+    ],
+    "simulation_budgets": [
+      128,
+      512,
+      2048
+    ],
+    "smoke_pairs": 5,
+    "screening_pairs": 25,
+    "confirmation_pairs": 500,
+    "max_turns": 1000,
+    "max_actions": 10000,
+    "cutoff_score": 0.5,
+    "paired_seats": true,
+    "final_seed_list": null,
+    "seed_set": "tuning",
+    "tier": "smoke",
+    "mode": "policy",
+    "budget_ms": 500,
+    "simulations": null,
+    "bootstrap_repeats": 5000,
+    "seed_file_sha256": "a75e74b9ee5ad778db6e35041945be67cc62c9fab741e252be1aef32f2508d94",
+    "protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e",
+    "schedule": "quick-v1",
+    "schedule_sha256": "8a2ca5ee35a6f7780de5e57a1f71e44284dd3e8ebc248950fc3de2e8dc06dcae",
+    "futility": {
+      "version": 1,
+      "enabled": true,
+      "minimum_pairs": 20,
+      "check_every_pairs": 20,
+      "alpha": 0.05,
+      "hopeless_match_score": 0.25,
+      "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+    }
+  },
+  "seed": 11,
+  "candidate": {
+    "key": "NEURAL_POLICY",
+    "checkpoint": {
+      "path": "runs/catan-ai/phase6-XD-CNN-seed11-4c0d5e075872-20261107T084511715636Z/best.pt",
+      "sha256": "52e227a1130c8302f38b7f4ed9fcccba2d46c26d9292e11db283e1e06ec00a7b"
+    }
+  },
+  "opponent": {
+    "key": "RANDOM",
+    "checkpoint": null
+  },
+  "phase": 6,
+  "implementation_sha256": {
+    "agent_apis/neural/phase6.py": "1f5bec45b6f011b163ab6f6d51f4aa6e7fb472f57ff67b2d840a7122024870d8",
+    "agent_apis/neural/recipes.py": "9afa4296524ee29458cd14d3d1f645a8d69e0cc2f8531bd72364e257a6423c67",
+    "agent_apis/neural/train.py": "1791c0b7cbe98a59f66f50f8ecaf6ed17db350e98bdb4d399667b22d4f3dd877",
+    "agent_apis/neural/data.py": "7c3724237a5c860978e7b0c0d5fe7d7b7ed8d99d33bdd0e59b0cd2387de0f820",
+    "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+    "agent_apis/neural/provider.py": "8ea8c900bd4d1c9a01ad4bd3fd57a6cef0d4d9c30d98a58fce06000b468607d3",
+    "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+    "agent_apis/neural/parallel_search.py": "ce2cd524ae6f224b0198d441db9faf5d3dc98b16041363c575411976dbb105ca",
+    "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+    "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+    "agent_apis/futility.py": "8552e0c9187e1bbc7aa293a2c62081f6e3684a440830d8e944dfe168a03645c7",
+    "agent_apis/stochastic.py": "f96b4e8bc58811ff0df00653c5e5bc4cda1a0b254bc0100c1cafad188e367921",
+    "agent_apis/stochastic_search.py": "63fef840bff4e7ec97d215ce6b65a2c9a53201419260171a35fda69de07b0ed6",
+    "agent_apis/development_belief.py": "e4126270b2b86fba2bbee3f6283e153688d131622f08b54c993d03c09b343303",
+    "experiments/catan-ai/phase6.json": "e16873d1c4f4e867195db81cd4afea40663961ea06b148ccbeb54f3d246c9687",
+    "experiments/catan-ai/search-optimized-v1.json": "7240d63309833599d839b9ce278c20923519cb4b50ad23f753180e04e5dc3288",
+    "experiments/catan-ai/evaluation-quick-v1.json": "8a2ca5ee35a6f7780de5e57a1f71e44284dd3e8ebc248950fc3de2e8dc06dcae",
+    "experiments/catan-ai/phase5-frozen-opponent.json": "1e9148233227386aec522fd2978de519e0c0e8254d997cdebcb897defcee14c8",
+    "cache_manifest": "763efb9c167d7be207136f2470a87198ce6f7250ff5de131f31701b48f61afe0",
+    "experiments/catan-ai/phase5-configs/XD-CNN-seed11.json": "70e209b873541d2c875dba78387859b79e9d19e6439feead0fc50c1c821ea516",
+    "experiments/catan-ai/phase5-configs/XD-CNN-seed23.json": "9e4427b7c1c4ecd00e373bc169c3c5aa208bc0825dc970d108a3fbcbb95dd20e",
+    "experiments/catan-ai/phase5-configs/XD-CNN-seed47.json": "bbf089a9642473f9b5d398c7161ba072d25a2c68567c6546686bc60b862f9ade",
+    "experiments/catan-ai/phase5-configs/TRANSFORMER-seed11.json": "567410039a218acb95398e2efe02708d3f0cc42d361113a0184225309fc8a6b4",
+    "experiments/catan-ai/phase5-configs/TRANSFORMER-seed23.json": "b7d6acbddb12ec31a30ef2cce0e3bbca9de6e18dbdebfcf9272d7885f0536c3a",
+    "experiments/catan-ai/phase5-configs/TRANSFORMER-seed47.json": "de70af0760f160c98c5eb42ebad6b3ad14fecafb8ad53f5a04b9da56ec15d5b5"
+  },
+  "training_run_record": "runs/catan-ai/phase6-XD-CNN-seed11-4c0d5e075872-20261107T084511715636Z/run.json"
+}

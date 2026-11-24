@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "quick-v1",
+  "seed_set": "tuning",
+  "smoke_pairs": 5,
+  "screening_pairs": 25,
+  "budget_ms": 500,
+  "includes_smoke_in_total": true,
+  "base_protocol_sha256": "0512be80936c4a021ad1091f5dd93ad6ee16dcc350287f1a7b61df6dd1ba788e"
+}

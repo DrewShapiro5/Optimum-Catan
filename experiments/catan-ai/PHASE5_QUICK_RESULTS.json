@@ -1,0 +1,478 @@
+{
+  "status": "completed",
+  "scope": "Seed11 optimized search; reuse historical policy references; no new training or automatic confirmation",
+  "schedule": {
+    "smoke_games": 10,
+    "total_games": 50,
+    "includes_smoke": true
+  },
+  "budget_ms": 500,
+  "all_models_evaluated": true,
+  "final_seeds_used": false,
+  "training_seeds": [
+    11
+  ],
+  "architectures": {
+    "H-GNN": {
+      "search_run": "runs/catan-ai/phase5q-H-GNN-seed11-time-ec6f1c02cef3-20261107T051653831680Z/run.json",
+      "metrics": {
+        "games": 40,
+        "wins": 1,
+        "losses": 39,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.025,
+        "overall_match_score": 0.025,
+        "match_score_ci95": [
+          null,
+          null
+        ],
+        "score_without_cutoffs": 0.025,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          },
+          "1": {
+            "games": 20,
+            "wins": 1,
+            "losses": 19,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.05
+          }
+        },
+        "turns": {
+          "p50": 140.5,
+          "max": 221
+        },
+        "candidate_latency_all": {
+          "count": 9119,
+          "p50_ms": 452.6131250022445,
+          "p95_ms": 488.04980808345135,
+          "p99_ms": 502.4560155736981
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 7089,
+          "p50_ms": 456.1125420004828,
+          "p95_ms": 491.15615020273253,
+          "p99_ms": 504.1777270077728
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 479.9217914987821,
+          "p95_ms": 485.30259403050877,
+          "p99_ms": 485.7953473649104
+        },
+        "candidate_decision_seconds": 3280.300929091478,
+        "candidate_decisions_per_second": 2.779927877691888,
+        "candidate_overruns": 139,
+        "native_translation_rejections": 0,
+        "candidate_warm_overruns": 139,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+        "futility": {
+          "policy": {
+            "version": 1,
+            "enabled": true,
+            "minimum_pairs": 20,
+            "check_every_pairs": 20,
+            "alpha": 0.05,
+            "hopeless_match_score": 0.25,
+            "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+          },
+          "stopped": true,
+          "scheduled_pairs": 25,
+          "observed_pairs": 20,
+          "planned_looks": [
+            20,
+            25
+          ],
+          "mean_match_score": 0.025,
+          "upper_match_score": 0.23838318548435095,
+          "confidence": 0.95,
+          "alpha_per_look": 0.025,
+          "reason": "Even the corrected one-sided upper bound is below 25% match score"
+        },
+        "descriptive_pair_bootstrap_ci95": [
+          0.0,
+          0.075
+        ],
+        "interval_status": "Fixed-sample bootstrap suppressed after optional stopping; use the corrected futility bound"
+      },
+      "status": "stopped-early",
+      "promotion_eligible": false,
+      "policy_reference": "runs/catan-ai/phase3-NEURAL_POLICY-9a48b52700c5-20261105T035939022871Z/run.json",
+      "policy_reference_sha256": "e99ab654db3d9b1c35e5597f96b43eb92b70aa09f037a53b2854a99e7a599e60",
+      "policy_reference_status": "completed",
+      "policy_reference_games_used": 40,
+      "search_minus_policy": {
+        "difference": 0.0,
+        "ci95": [
+          null,
+          null
+        ],
+        "games": 40,
+        "descriptive_only": true,
+        "interval_status": "Fixed-sample interval suppressed because search or policy stopped early"
+      }
+    },
+    "TRANSFORMER": {
+      "search_run": "runs/catan-ai/phase5q-TRANSFORMER-seed11-time-9bb5d03d584a-20261107T055819620362Z/run.json",
+      "metrics": {
+        "games": 50,
+        "wins": 9,
+        "losses": 41,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.18,
+        "overall_match_score": 0.18,
+        "match_score_ci95": [
+          0.1,
+          0.28
+        ],
+        "score_without_cutoffs": 0.18,
+        "seat_specific": {
+          "0": {
+            "games": 25,
+            "wins": 3,
+            "losses": 22,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.12
+          },
+          "1": {
+            "games": 25,
+            "wins": 6,
+            "losses": 19,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.24
+          }
+        },
+        "turns": {
+          "p50": 140.5,
+          "max": 219
+        },
+        "candidate_latency_all": {
+          "count": 11311,
+          "p50_ms": 449.685541971121,
+          "p95_ms": 487.34875000081956,
+          "p99_ms": 502.26202530029695
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 8624,
+          "p50_ms": 453.62581200606655,
+          "p95_ms": 490.9525411610957,
+          "p99_ms": 503.7959276873154
+        },
+        "candidate_cold_first_decision": {
+          "count": 50,
+          "p50_ms": 479.94129148719367,
+          "p95_ms": 485.49937340576435,
+          "p99_ms": 801.4237271669833
+        },
+        "candidate_decision_seconds": 3969.846298615739,
+        "candidate_decisions_per_second": 2.849228697832477,
+        "candidate_overruns": 174,
+        "native_translation_rejections": 0,
+        "candidate_warm_overruns": 173,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+        "futility": {
+          "policy": {
+            "version": 1,
+            "enabled": true,
+            "minimum_pairs": 20,
+            "check_every_pairs": 20,
+            "alpha": 0.05,
+            "hopeless_match_score": 0.25,
+            "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+          },
+          "stopped": false,
+          "scheduled_pairs": 25,
+          "observed_pairs": 25,
+          "planned_looks": [
+            20,
+            25
+          ],
+          "mean_match_score": 0.18,
+          "upper_match_score": 0.4359168766166867,
+          "confidence": 0.95,
+          "alpha_per_look": 0.025
+        }
+      },
+      "status": "completed",
+      "promotion_eligible": true,
+      "policy_reference": "runs/catan-ai/phase3-NEURAL_POLICY-3a8f77269f20-20261105T040348952600Z/run.json",
+      "policy_reference_sha256": "0ae265932ce40d122dc4de3064575197bb74f21a2df5b74011126a64601ffccd",
+      "policy_reference_status": "stopped-early",
+      "policy_reference_games_used": 40,
+      "search_minus_policy": {
+        "difference": 0.175,
+        "ci95": [
+          null,
+          null
+        ],
+        "games": 40,
+        "descriptive_only": true,
+        "interval_status": "Fixed-sample interval suppressed because search or policy stopped early"
+      }
+    },
+    "XD-CNN": {
+      "search_run": "runs/catan-ai/phase5q-XD-CNN-seed11-time-d09f1c3955bc-20261107T065309745711Z/run.json",
+      "metrics": {
+        "games": 50,
+        "wins": 12,
+        "losses": 38,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.24,
+        "overall_match_score": 0.24,
+        "match_score_ci95": [
+          0.14,
+          0.36
+        ],
+        "score_without_cutoffs": 0.24,
+        "seat_specific": {
+          "0": {
+            "games": 25,
+            "wins": 8,
+            "losses": 17,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.32
+          },
+          "1": {
+            "games": 25,
+            "wins": 4,
+            "losses": 21,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.16
+          }
+        },
+        "turns": {
+          "p50": 138.5,
+          "max": 242
+        },
+        "candidate_latency_all": {
+          "count": 11183,
+          "p50_ms": 434.2726250179112,
+          "p95_ms": 473.21107530151494,
+          "p99_ms": 492.42144889023626
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 8515,
+          "p50_ms": 440.27529199956916,
+          "p95_ms": 476.7406249040505,
+          "p99_ms": 494.44746288412716
+        },
+        "candidate_cold_first_decision": {
+          "count": 50,
+          "p50_ms": 467.06397899833973,
+          "p95_ms": 479.1330328429467,
+          "p99_ms": 498.90117988979904
+        },
+        "candidate_decision_seconds": 3790.177257497358,
+        "candidate_decisions_per_second": 2.950521635334834,
+        "candidate_overruns": 44,
+        "native_translation_rejections": 0,
+        "candidate_warm_overruns": 43,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+        "futility": {
+          "policy": {
+            "version": 1,
+            "enabled": true,
+            "minimum_pairs": 20,
+            "check_every_pairs": 20,
+            "alpha": 0.05,
+            "hopeless_match_score": 0.25,
+            "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+          },
+          "stopped": false,
+          "scheduled_pairs": 25,
+          "observed_pairs": 25,
+          "planned_looks": [
+            20,
+            25
+          ],
+          "mean_match_score": 0.24,
+          "upper_match_score": 0.5052241740402512,
+          "confidence": 0.95,
+          "alpha_per_look": 0.025
+        }
+      },
+      "status": "completed",
+      "promotion_eligible": true,
+      "policy_reference": "runs/catan-ai/phase3-NEURAL_POLICY-4b0d56110055-20261105T033728078511Z/run.json",
+      "policy_reference_sha256": "83002de70be59e0746a8e3db090d8a77dad3c5c07cf4561d168568988e757891",
+      "policy_reference_status": "completed",
+      "policy_reference_games_used": 50,
+      "search_minus_policy": {
+        "difference": 0.0,
+        "ci95": [
+          -0.1,
+          0.12
+        ],
+        "games": 50,
+        "descriptive_only": true
+      }
+    },
+    "MLP": {
+      "search_run": "runs/catan-ai/phase5q-MLP-seed11-time-7337e307de47-20261107T074459595467Z/run.json",
+      "metrics": {
+        "games": 40,
+        "wins": 0,
+        "losses": 40,
+        "cutoffs": 0,
+        "errors": 0,
+        "illegal_actions": 0,
+        "completed_game_win_rate": 0.0,
+        "overall_match_score": 0.0,
+        "match_score_ci95": [
+          null,
+          null
+        ],
+        "score_without_cutoffs": 0.0,
+        "seat_specific": {
+          "0": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          },
+          "1": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "cutoffs": 0,
+            "errors": 0,
+            "match_score": 0.0
+          }
+        },
+        "turns": {
+          "p50": 123.5,
+          "max": 210
+        },
+        "candidate_latency_all": {
+          "count": 6663,
+          "p50_ms": 450.80575000611134,
+          "p95_ms": 497.73355831275694,
+          "p99_ms": 508.39003307337407
+        },
+        "candidate_latency_warm_nonforced": {
+          "count": 5310,
+          "p50_ms": 453.8648125017062,
+          "p95_ms": 499.81953735259594,
+          "p99_ms": 508.7129707747954
+        },
+        "candidate_cold_first_decision": {
+          "count": 40,
+          "p50_ms": 470.41510400595143,
+          "p95_ms": 532.4433368587052,
+          "p99_ms": 535.4652611288475
+        },
+        "candidate_decision_seconds": 2459.581816464779,
+        "candidate_decisions_per_second": 2.7089970967409833,
+        "candidate_overruns": 269,
+        "native_translation_rejections": 0,
+        "candidate_warm_overruns": 260,
+        "p95_limit_ms": 525.0,
+        "timing_gate_passed": true,
+        "cutoff_gate_passed": true,
+        "failure_gate_passed": true,
+        "lower_bound_above_50_percent": false,
+        "failure_score_convention": "Errors are invalid games with zero candidate credit; never wins. Any error blocks promotion.",
+        "futility": {
+          "policy": {
+            "version": 1,
+            "enabled": true,
+            "minimum_pairs": 20,
+            "check_every_pairs": 20,
+            "alpha": 0.05,
+            "hopeless_match_score": 0.25,
+            "method": "bounded-pair-KL-upper-bound-with-finite-look-correction"
+          },
+          "stopped": true,
+          "scheduled_pairs": 25,
+          "observed_pairs": 20,
+          "planned_looks": [
+            20,
+            25
+          ],
+          "mean_match_score": 0.0,
+          "upper_match_score": 0.16843347098308534,
+          "confidence": 0.95,
+          "alpha_per_look": 0.025,
+          "reason": "Even the corrected one-sided upper bound is below 25% match score"
+        },
+        "descriptive_pair_bootstrap_ci95": [
+          0.0,
+          0.0
+        ],
+        "interval_status": "Fixed-sample bootstrap suppressed after optional stopping; use the corrected futility bound"
+      },
+      "status": "stopped-early",
+      "promotion_eligible": false,
+      "policy_reference": "runs/catan-ai/phase3-NEURAL_POLICY-d06afbec8658-20261105T013753865136Z/run.json",
+      "policy_reference_sha256": "b1ea4eb597f6cbac4be6b4efe1c524d75acb53a162f74faf3342c2c12668e2c9",
+      "policy_reference_status": "completed",
+      "policy_reference_games_used": 40,
+      "search_minus_policy": {
+        "difference": 0.0,
+        "ci95": [
+          null,
+          null
+        ],
+        "games": 40,
+        "descriptive_only": true,
+        "interval_status": "Fixed-sample interval suppressed because search or policy stopped early"
+      }
+    }
+  },
+  "source_sha256": {
+    "agent_apis/benchmark.py": "cc7d4164c2dde27dffb3de12c86b6c2b89f599b0ec23a716fc9f6b726484b68a",
+    "agent_apis/futility.py": "8552e0c9187e1bbc7aa293a2c62081f6e3684a440830d8e944dfe168a03645c7",
+    "agent_apis/stochastic.py": "f96b4e8bc58811ff0df00653c5e5bc4cda1a0b254bc0100c1cafad188e367921",
+    "agent_apis/stochastic_search.py": "63fef840bff4e7ec97d215ce6b65a2c9a53201419260171a35fda69de07b0ed6",
+    "agent_apis/development_belief.py": "e4126270b2b86fba2bbee3f6283e153688d131622f08b54c993d03c09b343303",
+    "agent_apis/neural/provider.py": "0a8c1075bdf73eebb41ac6628ca23e20c46d25f07c88d04b896337d1f876093b",
+    "agent_apis/neural/parallel_search.py": "ce2cd524ae6f224b0198d441db9faf5d3dc98b16041363c575411976dbb105ca",
+    "agent_apis/neural/models.py": "a7ee28b743db48f3ad2c9579239e9df2084e366fd88f738558f8f6184a24909c",
+    "agent_apis/neural/topology.py": "625ddcf0cd2545a40789d213609114406ce1909aaf37661184beb894b9d8d7c5",
+    "agent_apis/observation.py": "2afef0b3b5553f8fa449db79f060ffd44d6e8cb5fbab5379ee447801edb853a8",
+    "agent_apis/neural/quick_evaluation.py": "a2b3565ac2bba9089e2663c54c7bf279b35f8dc87c729de248d9086b82b20e8a",
+    "experiments/catan-ai/evaluation-quick-v1.json": "8a2ca5ee35a6f7780de5e57a1f71e44284dd3e8ebc248950fc3de2e8dc06dcae",
+    "experiments/catan-ai/search-optimized-v1.json": "7240d63309833599d839b9ce278c20923519cb4b50ad23f753180e04e5dc3288",
+    "experiments/catan-ai/phase5-frozen-opponent.json": "1e9148233227386aec522fd2978de519e0c0e8254d997cdebcb897defcee14c8"
+  },
+  "reporting_recovery": {
+    "previous_status": "needs-investigation",
+    "previous_error": "ValueError: No preserved policy baseline for TRANSFORMER",
+    "games_replayed": 0,
+    "reporter_sha256": "a5a3d4e364a0b6876477c550ca4540048e1c11229eb3e5a4baf5771722e82a89"
+  }
+}

@@ -1,0 +1,309 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "created_at",
+    "configuration",
+    "seed",
+    "rng_seeds",
+    "source",
+    "datasets",
+    "software",
+    "hardware",
+    "checkpoint",
+    "metrics",
+    "elapsed_seconds"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "preflight-complete",
+        "running",
+        "completed",
+        "failed",
+        "stopped-early"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "content",
+        "sha256"
+      ],
+      "properties": {
+        "content": {
+          "type": "object",
+          "required": [
+            "contract_version",
+            "experiment",
+            "stage",
+            "rules",
+            "data",
+            "actions",
+            "value",
+            "randomness",
+            "runtime",
+            "model",
+            "training",
+            "search",
+            "evaluation"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rng_seeds": {
+      "type": "object",
+      "required": [
+        "board",
+        "simulator",
+        "search",
+        "training",
+        "evaluation"
+      ],
+      "properties": {
+        "board": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "simulator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "search": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "training": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evaluation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "revision",
+        "status",
+        "files",
+        "sha256"
+      ],
+      "properties": {
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "manifest_sha256",
+          "schema_version",
+          "feature_names",
+          "action_vocabulary",
+          "games",
+          "num_games",
+          "num_samples",
+          "provider",
+          "strategy",
+          "jsettlers_revision"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "schema_version": {
+            "const": 2
+          },
+          "feature_names": {
+            "type": "array",
+            "minItems": 633,
+            "maxItems": 633,
+            "items": {
+              "type": "string"
+            }
+          },
+          "action_vocabulary": {
+            "type": "array",
+            "minItems": 332,
+            "maxItems": 332
+          },
+          "games": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "file",
+                "game_id",
+                "seed",
+                "split",
+                "sha256"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "game_id": {
+                  "type": "string"
+                },
+                "seed": {
+                  "type": "integer"
+                },
+                "split": {
+                  "enum": [
+                    "train",
+                    "validation",
+                    "test"
+                  ]
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "num_games": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "num_samples": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "provider": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "jsettlers_revision": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "software": {
+      "type": "object",
+      "required": [
+        "python",
+        "executable",
+        "packages"
+      ],
+      "properties": {
+        "python": {
+          "type": "string"
+        },
+        "executable": {
+          "type": "string"
+        },
+        "packages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "hardware": {
+      "type": "object",
+      "required": [
+        "platform",
+        "machine",
+        "available_devices"
+      ]
+    },
+    "checkpoint": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "elapsed_seconds": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:catan-ai:run-record:1",
+  "title": "Catan AI run record v1"
+}

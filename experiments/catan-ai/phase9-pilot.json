@@ -1,0 +1,21 @@
+{
+  "phase": 9,
+  "route": "DAgger teacher data aggregation pilot",
+  "model": "XD-CNN",
+  "parent": "seed11 D2/W0 validation-selected checkpoint",
+  "collection_games": 20,
+  "validation_opponent": "JSETTLERS",
+  "updates": 1000,
+  "batch_size": 256,
+  "old_data_fraction": 0.5,
+  "validation_games": 10,
+  "training_device": "mps",
+  "seed": 11,
+  "teacher_queries": "All non-forced learner decisions; sync SMART teacher from actor-redacted current view. Exclude and report failed queries.",
+  "value_targets": "Actual completed learner-game outcomes; entire censored games excluded",
+  "checkpoint_selection": "Common unweighted D2 validation loss, including parent step0; earliest tie",
+  "final_seeds_used": false,
+  "automatic_scale_up": false,
+  "scope": "Bounded pilot only, not full 500-game/three-route phase9",
+  "max_query_failure_rate": 0.1
+}

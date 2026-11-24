@@ -1,0 +1,37 @@
+{
+  "checkpoint": {
+    "path": "runs/catan-ai/phase6-XD-CNN-seed23-3cf3f0e970d6-20261110T234122423183Z/best.pt",
+    "sha256": "18e0b75fa2ca33fc1364c425170edd7fcbe4a03821e148238b9b59feb6fd8498"
+  },
+  "search": {
+    "c_puct": 1.5,
+    "chance": "true-probability-merged",
+    "opponent": "frozen-MLP-D2-W0",
+    "root_selection": [
+      "visits",
+      "mean_value",
+      "stable_action_id"
+    ],
+    "max_root_depth": null,
+    "max_actions": 128,
+    "opponent_checkpoint": {
+      "path": "runs/catan-ai/phase5-MLP-seed11-fa597d75b29d-20261104T232130781987Z/best.pt",
+      "sha256": "d6070c821275ed5701c9a8803c0456b4f74804b366672fd906396c00406591e5"
+    },
+    "workers": 4,
+    "revision": "optimized-unbounded-own-actions-v1"
+  },
+  "budget_ms": 500,
+  "model": "XD-CNN",
+  "recipe": "D2-W4",
+  "training_seed": 23,
+  "selection": {
+    "basis": "Highest completed 50-game JSettlers search tuning score among phase-six CNN checkpoints",
+    "wins": 20,
+    "games": 50,
+    "benchmark_rules_friendly_robber": false,
+    "run_record": "runs/catan-ai/phase5q-XD-CNN-seed23-time-f779cdfb5c6e-20261111T040933189784Z/run.json",
+    "claim": "Best measured historical candidate; friendly-robber superiority is unconfirmed"
+  },
+  "purpose": "User-requested interactive inspection; does not change training defaults"
+}

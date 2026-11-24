@@ -6,3 +6,20 @@ dependencies:
   - python=3.12
   - nodejs=24
   - pip
+  - pip:
+      # Core Catanatron engine, WebUI backend, and local agent_apis package
+      - -e ./framework[web]
+      - -e .
+      # Training, ONNX export, schemas, and tests
+      - numpy
+      - gymnasium==0.29.1
+      - onnx
+      - jsonschema
+      - pytest
+      # PyTorch: macOS uses the standard PyPI wheel (MPS).
+      # On Windows with an NVIDIA GPU, install the CUDA wheel after creating the env:
+      #   pip install --upgrade --force-reinstall torch --index-url https://download.pytorch.org/whl/cu126
+      - torch
+      # ONNX Runtime GPU (provides onnxruntime.dll + CUDAExecutionProvider on Windows/Linux;
+      # macOS uses the bundled CoreML dylib in agent_apis/neural/native_worker/runtime/)
+      - onnxruntime-gpu; sys_platform != "darwin"

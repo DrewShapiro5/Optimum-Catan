@@ -615,7 +615,14 @@ def summarize_case(name, backend, workers, elapsed, records, batch_stats):
 
 
 def parse_worker_list(raw):
-    return [int(x.strip()) for x in raw.split(',') if x.strip()]
+    items = [raw] if isinstance(raw, str) else list(raw)
+    out = []
+    for item in items:
+        for part in str(item).split(','):
+            part = part.strip()
+            if part:
+                out.append(int(part))
+    return out
 
 
 def main():
@@ -629,13 +636,13 @@ def main():
     has_cuda = torch.cuda.is_available()
     has_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
     is_macos = sys.platform == 'darwin'
-    parser.add_argument('--cpu-workers', type=str, default='12')
-    parser.add_argument('--mps-workers', type=str, default='12,16,24,48,64')
-    parser.add_argument('--coreml-workers', type=str, default='16,32')
+    parser.add_argument('--cpu-workers', nargs='+', default=['12'])
+    parser.add_argument('--mps-workers', nargs='+', default=['12,16,24,48,64'])
+    parser.add_argument('--coreml-workers', nargs='+', default=['16,32'])
     parser.add_argument('--coreml-batch', type=int, default=32, help='Static padded batch size for CoreML EP')
-    parser.add_argument('--cuda-workers', type=str, default='32,64,128', help='Comma-separated worker counts for in-process Rust CUDA EP pool')
+    parser.add_argument('--cuda-workers', nargs='+', default=['32,64,128'], help='Worker counts (comma- or space-separated) for in-process Rust CUDA EP pool')
     parser.add_argument('--cuda-batch', type=int, default=64, help='Max dynamic batch size for CUDA EP pool')
-    parser.add_argument('--cuda-socket-workers', type=str, default='32,64', help='Comma-separated worker counts for PyTorch CUDA socket server')
+    parser.add_argument('--cuda-socket-workers', nargs='+', default=['32,64'], help='Worker counts (comma- or space-separated) for PyTorch CUDA socket server')
     parser.add_argument('--gpu-streams', type=int, default=1, help='Concurrent GPU inference streams for CoreML/CUDA pool')
     parser.add_argument('--mcts-lanes', type=int, default=1, help='Concurrent virtual-loss MCTS lanes per game')
     parser.add_argument('--virtual-loss', type=float, default=1.0, help='Virtual loss penalty when --mcts-lanes > 1')

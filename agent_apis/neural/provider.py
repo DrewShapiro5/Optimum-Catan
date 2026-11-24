@@ -39,7 +39,8 @@ class NeuralCheckpoint:
                 (meta['configuration'].get('phase')==9 and recipe=='D2-W4'),
                 'Expected a baseline, phase-6, or W4 self-play checkpoint')
         self.metadata=meta;self.path=Path(path);self.device=device or meta['inference_device']
-        require(self.device!='mps' or torch.backends.mps.is_available(),'Requested MPS inference is unavailable; configure CPU explicitly')
+        require(self.device!='mps' or (hasattr(torch.backends,'mps') and torch.backends.mps.is_available()),'Requested MPS inference is unavailable; configure CPU explicitly')
+        require(not str(self.device).startswith('cuda') or torch.cuda.is_available(),'Requested CUDA inference is unavailable; configure CPU explicitly')
         torch.set_num_threads(meta['configuration']['runtime']['cpu_threads'])
         if is_exphormer:
             from agent_apis.neural.value_ablation_models import TypedExphormer

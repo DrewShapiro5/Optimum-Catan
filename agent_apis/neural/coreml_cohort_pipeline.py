@@ -6,8 +6,10 @@ Per cohort (2,000 completed, replay-verified games, 128 simulations, w128-b64-s4
   (Transformer is kept out of self-play for speed, and trained on the same 2,000-game cohort.)
 
 After saving and replay-verifying all 2,000 games:
-  - Stratified whole-game 90/5/5 split (1,800 train / 100 validation / 100 test).
-  - Derives 64 seeded positions per game in RAM (no feature tensors persisted).
+  - Stratified whole-game train/validation split (default 95/5 via --validation-fraction 0.05).
+  - Loads all eligible training positions into RAM once per cohort and reslices
+    --positions-per-game (default 64, initial placements pinned) every --resample-every updates.
+  - Validation games are derived once per cohort and never resampled.
   - Continues W4 training for both XD-CNN and TYPED-EXPHORMER for 2,000 updates on MPS
     with value loss downweighted to 0.25x (configurable via --value-loss-weight),
     saving the lowest validation-loss checkpoint (`best.pt`) and `final.pt`.
@@ -21,12 +23,14 @@ import gzip
 import json
 from pathlib import Path
 import queue
+import random
 import shutil
 import subprocess
 import threading
 import time
 import zlib
 
+import numpy as np
 import torch
 from catanatron.models.player import Color
 from catanatron.serialization import action_record_to_json, map_to_json
@@ -41,6 +45,12 @@ from agent_apis.neural import (
     selfplay,
     sparse_catchup as sparse_module,
 )
+from agent_apis.neural.device_utils import (
+    configure_torch_device,
+    default_gpu_backend,
+    empty_device_cache,
+    resolve_torch_device,
+)
 from agent_apis.neural.matchup_benchmark import NativeBridgePool
 from agent_apis.neural.native_assets import (
     NATIVE,
@@ -49,7 +59,10 @@ from agent_apis.neural.native_assets import (
     runtime_environment,
 )
 from agent_apis.neural.native_codec import Codec, job_meta
-from agent_apis.neural.native_gpu_server import export_checkpoint_coreml_static
+from agent_apis.neural.native_gpu_server import (
+    export_checkpoint_coreml_static,
+    export_checkpoint_dynamic,
+)
 from agent_apis.neural.native_selfplay import (
     JournalRecorder,
     PROTOCOL_VERSION,
@@ -226,13 +239,14 @@ def collect_neural_block(
     mcts_lanes,
     virtual_loss,
     wait_us,
+    gpu_backend='coreml',
     mcts_opponent='self-policy',
     setup_simulations=None,
     setup_exploration_games=0,
     setup_temperature=1.5,
     print_games=False,
 ):
-    """Collect `target_games` completed games using native Rust CoreML --pool."""
+    """Collect `target_games` completed games using native Rust GPU --pool."""
     block_dir.mkdir(parents=True, exist_ok=True)
     completed, next_attempt = load_existing_completed(block_dir, target_games)
     if len(completed) >= target_games:
@@ -242,23 +256,24 @@ def collect_neural_block(
     eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
     remaining_needed = target_games - len(completed)
     n_workers = min(workers, remaining_needed)
+    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     print(
         f'\n[{block_name}] Collecting {remaining_needed} completed games '
-        f'(w={n_workers}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
+        f'(backend={gpu_backend}, w={n_workers}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
         f'setup_sims={eff_setup_sims}, setup_explore={setup_exploration_games}@T={setup_temperature})...',
         flush=True,
     )
     log = (NATIVE / 'target/worker-stderr.log').open('a')
     cmd = [
-        str(binary), '--pool', '--workers', str(n_workers), '--gpu-backend', 'coreml',
-        '--max-batch', str(coreml_batch), '--fixed-batch', str(coreml_batch),
+        str(binary), '--pool', '--workers', str(n_workers), '--gpu-backend', gpu_backend,
+        '--max-batch', str(coreml_batch), '--fixed-batch', str(fixed_batch),
         '--wait-us', str(wait_us), '--gpu-streams', str(gpu_streams),
     ]
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
         text=True, bufsize=1, env=runtime_environment(),
     )
-    identity = {**execution_identity(binary), 'backend': 'rust-onnx-coreml-batch'}
+    identity = {**execution_identity(binary), 'backend': f'rust-onnx-{gpu_backend}-batch'}
     recorders = {}
     game_paths = {}
     pool_metrics = {}
@@ -417,13 +432,14 @@ def collect_jsettlers_block(
     mcts_lanes,
     virtual_loss,
     wait_us,
+    gpu_backend='coreml',
     mcts_opponent='self-policy',
     setup_simulations=None,
     setup_exploration_games=0,
     setup_temperature=1.5,
     print_games=False,
 ):
-    """Collect `target_games` completed JSettlers vs Model games via CoreML --bridge-pool + pooled JVMs."""
+    """Collect `target_games` completed JSettlers vs Model games via native GPU --bridge-pool + pooled JVMs."""
     block_dir.mkdir(parents=True, exist_ok=True)
     completed, next_attempt = load_existing_completed(block_dir, target_games)
     if len(completed) >= target_games:
@@ -434,13 +450,14 @@ def collect_jsettlers_block(
     remaining_needed = target_games - len(completed)
     n_workers = min(workers, remaining_needed)
     n_jvms = min(jsettlers_jvms, n_workers)
+    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     print(
         f'\n[{block_name}] Collecting {remaining_needed} completed games vs JSettlers '
-        f'(reused {len(completed)}/{target_games} | w={n_workers}, jvms={n_jvms}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, '
+        f'(reused {len(completed)}/{target_games} | backend={gpu_backend}, w={n_workers}, jvms={n_jvms}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, '
         f'sims={protocol["simulations"]}, setup_sims={eff_setup_sims}, setup_explore={setup_exploration_games}@T={setup_temperature})...',
         flush=True,
     )
-    bridge = NativeBridgePool(binary, n_workers, 'coreml', coreml_batch, wait_us, gpu_streams)
+    bridge = NativeBridgePool(binary, n_workers, gpu_backend, coreml_batch, wait_us, gpu_streams, fixed_batch=fixed_batch)
     orig_js_bridge = js_player.BRIDGE
     pooled_js = PooledJavaBridge(n_jvms=n_jvms)
     js_player.BRIDGE = pooled_js
@@ -611,8 +628,20 @@ def derive_memory_data(refs, seed, limit=64):
     return compact.MemoryData(chunks, refs)
 
 
+def _derive_all_game_positions(rec):
+    """Replay a game once and return all eligible positions plus initial build-phase count."""
+    events = rec['events']
+    eligible = [i for i, e in enumerate(events) if e.get('v') or e.get('demonstration')]
+    if not eligible:
+        return None, 0
+    first_roll = next((i for i, e in enumerate(events) if e['event'][0][1] == 'ROLL'), len(events))
+    n_init = sum(1 for i in eligible if i < first_roll)
+    data = fresh.derive(rec, len(eligible), seed=0, always_include_initial=True)
+    return data, n_init
+
+
 class ResamplingMemoryData:
-    """Wraps MemoryData to re-derive fresh seeded positions every N training updates."""
+    """Keeps all eligible training positions in RAM once and reslices per-game subsets in ms."""
 
     def __init__(self, refs, base_seed, limit=64, resample_every=500, calls_per_step=2):
         self.refs = list(refs)
@@ -620,40 +649,106 @@ class ResamplingMemoryData:
         self.limit = limit
         self.resample_every = resample_every
         self.calls_per_step = calls_per_step
+        self.manifest = {'families': w4.FAMILIES}
         self._round = 0
         self._sample_calls = 0
-        self._current = derive_memory_data(self.refs, self._round_seed(0), limit=self.limit)
+
+        t0 = time.perf_counter()
+        chunks = []
+        self._game_spans = []
+        offset = 0
+        for ref in self.refs:
+            path = ROOT / ref['path']
+            require(file_digest(path) == ref['sha256'], f'Journal modified: {path}')
+            with gzip.open(path, 'rt') as stream:
+                rec = json.load(stream)
+            d, n_init = _derive_all_game_positions(rec)
+            if d is None:
+                continue
+            w4.check_arrays(d)
+            n_rows = len(d['value'])
+            chunks.append(d)
+            self._game_spans.append((rec['pair']['pair_id'], offset, min(n_init, n_rows), n_rows))
+            offset += n_rows
+        require(chunks, 'No completed searched examples')
+
+        self._pool = {k: np.concatenate([d[k] for d in chunks]) for k in ('features', 'legal', 'policy', 'value')}
+        self._pool['action'] = self._pool['policy'].argmax(1).astype(np.int64)
+        self._pool['family'] = w4.ACTION_FAMILY[self._pool['action']]
+        self._pool['phase'] = np.ones(len(self._pool['value']), np.uint8)
+        n_pool = len(self._pool['value'])
+        self._pool_family_mass = np.zeros((n_pool, len(w4.FAMILIES)), np.float64)
+        for action, family in enumerate(w4.ACTION_FAMILY):
+            self._pool_family_mass[:, family] += self._pool['policy'][:, action]
+        self._refs_sha256 = digest(self.refs)
+
+        pool_bytes = sum(arr.nbytes for arr in self._pool.values()) + self._pool_family_mass.nbytes
+        print(
+            f'  [pool] Loaded {n_pool:,} eligible positions from {len(self._game_spans)} games '
+            f'into RAM ({pool_bytes / (1024**3):.2f} GB) in {time.perf_counter() - t0:.1f}s',
+            flush=True,
+        )
+        self._build_round(0)
 
     def _round_seed(self, round_idx):
         return self.base_seed if round_idx == 0 else benchmark.named_seed(self.base_seed, f'resample-{round_idx}')
+
+    def _build_round(self, round_idx):
+        round_seed = self._round_seed(round_idx)
+        selected = []
+        for pair_id, offset, n_init, n_rows in self._game_spans:
+            if n_init > 0:
+                selected.extend(range(offset, offset + n_init))
+            rem = max(0, self.limit - n_init)
+            n_later = n_rows - n_init
+            if rem > 0 and n_later > 0:
+                if rem >= n_later:
+                    selected.extend(range(offset + n_init, offset + n_rows))
+                else:
+                    picked = random.Random(benchmark.named_seed(round_seed, pair_id)).sample(
+                        range(offset + n_init, offset + n_rows), rem
+                    )
+                    picked.sort()
+                    selected.extend(picked)
+        self._sel = np.asarray(selected, dtype=np.int64)
+        n = len(self._sel)
+        require(n > 0, 'No selected positions for training round')
+        fm = self._pool_family_mass[self._sel]
+        counts = fm.sum(0)
+        active = counts > 0
+        mass = np.zeros_like(counts)
+        mass[active] = w4.balanced_mass(counts[active])
+        self.factors = 0.5 / n + 0.5 * np.divide(mass, counts, out=np.zeros_like(mass), where=active)
+        self.q = fm @ self.factors
+        require(
+            np.isclose(self.q.sum(), 1) and (self.q > 0).all() and np.max(n * self.q) <= 5 + 1e-6,
+            'Invalid W4 replay distribution',
+        )
+        self.summary = {
+            'rows': n,
+            'pool_rows': len(self._pool['value']),
+            'dataset_references_sha256': self._refs_sha256,
+            'max_relative_sampling_probability': float(np.max(n * self.q)),
+            'value_weight_expectation': float(np.sum(self.q / (n * self.q))),
+            'probabilities_sha256': digest(self.q.tolist()),
+        }
 
     def reset(self):
         self._sample_calls = 0
         if self._round != 0:
             self._round = 0
-            self._current = derive_memory_data(self.refs, self._round_seed(0), limit=self.limit)
+            self._build_round(0)
 
     @property
     def arrays(self):
-        return self._current.arrays
-
-    @property
-    def summary(self):
-        return self._current.summary
-
-    @property
-    def q(self):
-        return self._current.q
-
-    @property
-    def factors(self):
-        return self._current.factors
+        return {k: v[self._sel] for k, v in self._pool.items()}
 
     def indices(self, split):
-        return self._current.indices(split)
+        return np.arange(len(self._sel))
 
     def batch(self, indices):
-        return self._current.batch(indices)
+        pool_ids = self._sel[indices]
+        return {k: v[pool_ids].copy() for k, v in self._pool.items()}
 
     def sample(self, rng, count):
         if self.resample_every > 0:
@@ -661,18 +756,21 @@ class ResamplingMemoryData:
             if self._sample_calls > 0 and self._sample_calls % period == 0:
                 self._round += 1
                 t0 = time.perf_counter()
-                self._current = derive_memory_data(
-                    self.refs, self._round_seed(self._round), limit=self.limit
-                )
+                self._build_round(self._round)
                 step_num = self._sample_calls // self.calls_per_step
                 print(
                     f'  [resample] step {step_num} (round {self._round}): '
-                    f'derived {len(self._current.arrays["value"])} positions '
-                    f'({self.limit}/game, initial placements pinned) in {time.perf_counter()-t0:.1f}s',
+                    f'sliced {len(self._sel):,} positions from in-RAM pool '
+                    f'({self.limit}/game, initial placements pinned) in {(time.perf_counter() - t0) * 1000:.1f}ms',
                     flush=True,
                 )
         self._sample_calls += 1
-        return self._current.sample(rng, count)
+        ids = rng.choice(len(self.q), count, p=self.q)
+        batch = self.batch(ids)
+        batch['policy'] *= (self.factors[w4.ACTION_FAMILY][None, :] / self.q[ids, None]).astype(np.float32)
+        require(np.allclose(batch['policy'].sum(1), 1, atol=2e-6), 'W4 target normalization failed')
+        batch['value_weight'] = (1 / (len(self.q) * self.q[ids])).astype(np.float32)
+        return batch
 
 
 def run_one_cohort(
@@ -715,7 +813,10 @@ def run_one_cohort(
         flush=True,
     )
 
-    cnn_onnx = export_checkpoint_coreml_static(cnn_ref, batch_size=args.coreml_batch)
+    if args.gpu_backend == 'coreml':
+        cnn_onnx = export_checkpoint_coreml_static(cnn_ref, batch_size=args.coreml_batch)
+    else:
+        cnn_onnx = export_checkpoint_dynamic(cnn_ref)
 
     block_refs = {}
     block_stats = {}
@@ -727,6 +828,7 @@ def run_one_cohort(
             binary, cnn_ref, cnn_ref, cnn_onnx, cnn_onnx, frozen_ref, frozen_onnx,
             protocol, args.workers, args.coreml_batch, args.gpu_streams,
             args.mcts_lanes, args.virtual_loss, args.wait_us,
+            gpu_backend=args.gpu_backend,
             mcts_opponent=args.mcts_opponent,
             setup_simulations=eff_setup_sims,
             setup_exploration_games=cnn_setup_exp,
@@ -739,6 +841,7 @@ def run_one_cohort(
             binary, cnn_ref, cnn_onnx, frozen_ref, frozen_onnx,
             protocol, args.jsettlers_workers, args.jsettlers_jvms, args.coreml_batch, args.gpu_streams,
             args.mcts_lanes, args.virtual_loss, args.wait_us,
+            gpu_backend=args.gpu_backend,
             mcts_opponent=args.mcts_opponent,
             setup_simulations=eff_setup_sims,
             setup_exploration_games=js_setup_exp,
@@ -747,16 +850,14 @@ def run_one_cohort(
         )
     collect_seconds = time.perf_counter() - t_collect
 
-    # Stratified whole-game 90% train / 5% validation / 5% test split across blocks.
-    splits = {'train': [], 'validation': [], 'test': []}
+    # Stratified whole-game train / validation split across blocks (no separate test split).
+    splits = {'train': [], 'validation': []}
     for name, refs in block_refs.items():
         n = len(refs)
-        n_val = max(1, n // 20)
-        n_test = max(1, n // 20)
-        n_train = n - n_val - n_test
+        n_val = max(1, min(n - 1, round(n * args.validation_fraction))) if n > 1 else 0
+        n_train = n - n_val
         splits['train'].extend(refs[:n_train])
-        splits['validation'].extend(refs[n_train : n_train + n_val])
-        splits['test'].extend(refs[n_train + n_val :])
+        splits['validation'].extend(refs[n_train:])
 
     manifest = {
         'cohort': cohort_idx,
@@ -778,6 +879,7 @@ def run_one_cohort(
             'setup_simulations': eff_setup_sims,
             'setup_exploration_games': setup_exp_total,
             'setup_temperature': args.setup_temperature,
+            'validation_fraction': args.validation_fraction,
             'positions_per_game': args.positions_per_game,
             'resample_every': args.resample_every,
             'value_loss_weight': args.value_loss_weight,
@@ -790,7 +892,7 @@ def run_one_cohort(
     }
 
     # Sliding replay buffer: combine train splits from the last `replay_cohorts` cohorts
-    # while keeping validation & test strictly from the current cohort (no leakage).
+    # while keeping validation strictly from the current cohort (no leakage).
     replay_train_refs = []
     included_cohorts = []
     first_replay = max(1, cohort_idx - args.replay_cohorts + 1)
@@ -819,17 +921,20 @@ def run_one_cohort(
     if args.skip_training:
         return cnn_ref, tr_ref, {'cohort': cohort_idx, 'status': 'collected-only', 'manifest': str(cohort_dir / 'manifest.json')}
 
-    require(torch.backends.mps.is_available(), 'PyTorch MPS is required for W4 training')
+    train_device = resolve_torch_device(args.train_device)
+    configure_torch_device(train_device)
     torch.set_num_threads(1)
 
     print(
         f'Replay buffer: cohorts {included_cohorts} ({len(replay_train_refs)} train games) | '
-        f'val={len(splits["validation"])}, test={len(splits["test"])} from cohort {cohort_idx:03d}',
+        f'val={len(splits["validation"])} from cohort {cohort_idx:03d} '
+        f'(validation_fraction={args.validation_fraction}, train_device={train_device})',
         flush=True,
     )
     print(
-        f'Deriving {args.positions_per_game} seeded positions per game in RAM '
-        f'(initial placements pinned, resample_every={args.resample_every} updates)...',
+        f'Loading all eligible training positions into RAM once '
+        f'(slicing {args.positions_per_game}/game with initial placements pinned, '
+        f'resample_every={args.resample_every} updates; validation fixed)...',
         flush=True,
     )
     train_data = ResamplingMemoryData(
@@ -840,14 +945,14 @@ def run_one_cohort(
         calls_per_step=2,
     )
     val_data = derive_memory_data(splits['validation'], cohort_seed, limit=args.positions_per_game)
-    test_data = derive_memory_data(splits['test'], cohort_seed, limit=args.positions_per_game)
     print(
-        f'Derived positions: train={len(train_data.arrays["value"])}, '
-        f'val={len(val_data.arrays["value"])}, test={len(test_data.arrays["value"])}',
+        f'Active positions: train={train_data.summary["rows"]:,} '
+        f'(in-RAM pool={train_data.summary["pool_rows"]:,}), '
+        f'val={len(val_data.arrays["value"]):,}',
         flush=True,
     )
 
-    sources = {str(Path(__file__).relative_to(ROOT)): file_digest(Path(__file__))}
+    sources = {str(Path(__file__).relative_to(ROOT)).replace('\\', '/'): file_digest(Path(__file__))}
     results = {}
     for name, klass, parent_ref in [
         ('cnn', fresh.Fresh, cnn_ref),
@@ -855,7 +960,7 @@ def run_one_cohort(
     ]:
         print(
             f'\n=== Cohort {cohort_idx:03d}: Training {name.upper()} '
-            f'({args.updates} W4 updates, value_loss_weight={args.value_loss_weight}x) ===',
+            f'({args.updates} W4 updates on {train_device}, value_loss_weight={args.value_loss_weight}x) ===',
             flush=True,
         )
         model_dir = cohort_dir / name
@@ -867,6 +972,7 @@ def run_one_cohort(
         work.core = sources
         work.cache = val_data
         work.state = {}
+        work.device = train_device
         work.deadline = time.time() + 6 * 3600
         work.stop_requested = False
         work.persist = lambda: None
@@ -886,17 +992,16 @@ def run_one_cohort(
             ('final', train_res['final_checkpoint']),
         ]:
             cp = selfplay.load_checkpoint(ref) if name == 'cnn' else work.load_sparse(ref)
-            model = cp.model.to('mps')
+            model = cp.model.to(train_device)
             torch.set_num_threads(1)
             metrics[label] = {}
-            for split_name, ds in [('validation', val_data), ('test', test_data)]:
-                r = corrected_evaluate(model, ds, split_name, 'mps')
-                metrics[label][split_name] = {
-                    k: r[k] for k in ('policy_nll', 'hard_policy_nll', 'value_bce', 'selection_loss', 'brier', 'top1_accuracy')
-                }
+            r = corrected_evaluate(model, val_data, 'validation', train_device)
+            metrics[label]['validation'] = {
+                k: r[k] for k in ('policy_nll', 'hard_policy_nll', 'value_bce', 'selection_loss', 'brier', 'top1_accuracy')
+            }
             model.to('cpu')
             del model, cp
-            torch.mps.empty_cache()
+            empty_device_cache(train_device)
 
         results[name] = {
             'parent': parent_ref,
@@ -910,6 +1015,7 @@ def run_one_cohort(
     saved = {
         'cohort': cohort_idx,
         'status': 'completed',
+        'validation_fraction': args.validation_fraction,
         'value_loss_weight': args.value_loss_weight,
         'manifest': str(cohort_dir / 'manifest.json'),
         'results': results,
@@ -918,17 +1024,16 @@ def run_one_cohort(
     write(results_path, saved)
 
     print(f'\n=== Cohort {cohort_idx:03d} Results (value_loss_weight={args.value_loss_weight}x) ===')
-    print(f'{"Model":<12} {"Stage":<10} {"Step":>5} {"Val Loss":>10} {"Val Pol":>9} {"Val Val":>9} {"Test Loss":>10} {"Test Top1":>10}')
+    print(f'{"Model":<12} {"Stage":<10} {"Step":>5} {"Val Loss":>10} {"Val Pol":>9} {"Val Val":>9} {"Val Brier":>10} {"Val Top1":>10}')
     for name in ('cnn', 'transformer'):
         entry = results[name]
         steps = {'incoming': 0, 'best_val': entry['best_step'], 'final': args.updates}
         for stage in ('incoming', 'best_val', 'final'):
             vm = entry['metrics'][stage]['validation']
-            tm = entry['metrics'][stage]['test']
             print(
                 f'{name:<12} {stage:<10} {str(steps[stage]):>5} {vm["selection_loss"]:>10.4f} '
                 f'{vm["policy_nll"]:>9.4f} {vm["value_bce"]:>9.4f} '
-                f'{tm["selection_loss"]:>10.4f} {tm["top1_accuracy"]*100:>9.2f}%'
+                f'{vm["brier"]:>10.4f} {vm["top1_accuracy"]*100:>9.2f}%'
             )
 
     return results['cnn']['best_checkpoint'], results['transformer']['best_checkpoint'], saved
@@ -946,12 +1051,15 @@ def main():
     parser.add_argument('--setup-simulations', type=int, default=None, help='MCTS simulations during initial build phase (default: matches --simulations)')
     parser.add_argument('--setup-exploration-games', type=int, default=0, help='Number of games per cohort played with --setup-temperature during initial placements (default: 0)')
     parser.add_argument('--setup-temperature', type=float, default=1.5, help='Initial build phase sampling temperature for --setup-exploration-games (default: 1.5)')
-    parser.add_argument('--positions-per-game', type=int, default=64, help='Positions derived per game per resampling round, always pinning initial placements (default: 64)')
-    parser.add_argument('--resample-every', type=int, default=500, help='Re-sample --positions-per-game per game every N training updates (default: 500; 0 = once per cohort)')
+    parser.add_argument('--validation-fraction', type=float, default=0.05, help='Fraction of games per block reserved for validation (default: 0.05; remaining games go to train)')
+    parser.add_argument('--positions-per-game', type=int, default=64, help='Positions sliced per game per resampling round from the in-RAM pool, always pinning initial placements (default: 64)')
+    parser.add_argument('--resample-every', type=int, default=500, help='Reslice --positions-per-game per game from RAM every N training updates (default: 500; 0 = once per cohort)')
     parser.add_argument('--workers', type=int, default=128, help='Workers for CNN vs CNN CoreML pool')
     parser.add_argument('--jsettlers-workers', type=int, default=None, help='Workers for JSettlers vs CNN CoreML bridge-pool (default: matches --workers)')
     parser.add_argument('--jsettlers-jvms', type=int, default=12, help='Number of parallel Java JSettlers Bridge JVMs (default: 12)')
-    parser.add_argument('--coreml-batch', type=int, default=64)
+    parser.add_argument('--gpu-backend', choices=('coreml', 'cuda', 'cpu-batch'), default=default_gpu_backend(), help='Native Rust ONNX execution provider for game collection (default: cuda if available, else coreml on macOS, else cpu-batch)')
+    parser.add_argument('--train-device', choices=('auto', 'cuda', 'mps', 'cpu'), default='auto', help='PyTorch device for W4 training and evaluation (default: auto)')
+    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=64, help='Max/static GPU inference batch size (default: 64)')
     parser.add_argument('--gpu-streams', type=int, default=4)
     parser.add_argument('--mcts-lanes', type=int, default=1)
     parser.add_argument('--virtual-loss', type=float, default=1.0)
@@ -971,6 +1079,7 @@ def main():
     if args.jsettlers_workers is None:
         args.jsettlers_workers = args.workers
     require(args.n_cohorts > 0, '--n-cohorts must be >= 1')
+    require(0 < args.validation_fraction < 1, '--validation-fraction must be between 0 and 1 (exclusive)')
     require(args.value_loss_weight > 0, '--value-loss-weight must be > 0')
     require(args.replay_cohorts > 0, '--replay-cohorts must be >= 1')
     require(args.setup_simulations is None or args.setup_simulations > 0, '--setup-simulations must be >= 1')
@@ -1032,6 +1141,7 @@ def main():
         {
             'n_cohorts': args.n_cohorts,
             'mcts_opponent': args.mcts_opponent,
+            'validation_fraction': args.validation_fraction,
             'replay_cohorts': args.replay_cohorts,
             'value_loss_weight': args.value_loss_weight,
             'updates_per_cohort': args.updates,
@@ -1045,14 +1155,14 @@ def main():
 
     if not args.skip_training:
         print(f'\n================ MULTI-COHORT SUMMARY ({args.n_cohorts} cohorts) ================')
-        print(f'{"Cohort":<8} {"Model":<12} {"BestStep":>8} {"Val Loss":>10} {"Val Pol":>9} {"Val Val":>9} {"Test Loss":>10} {"Test Top1":>10} {"Best Checkpoint"}')
+        print(f'{"Cohort":<8} {"Model":<12} {"BestStep":>8} {"Val Loss":>10} {"Val Pol":>9} {"Val Val":>9} {"Val Brier":>10} {"Val Top1":>10} {"Best Checkpoint"}')
         lines = [
             f'# CoreML Multi-Cohort Training Summary ({args.n_cohorts} cohorts)',
             '',
-            f'- **Games/cohort**: {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN ({args.simulations} sims, `mcts_opponent={args.mcts_opponent}`, `w{args.workers}-b{args.coreml_batch}-s{args.gpu_streams}-l{args.mcts_lanes}`)',
+            f'- **Games/cohort**: {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN ({args.simulations} sims, `mcts_opponent={args.mcts_opponent}`, `validation_fraction={args.validation_fraction}`, `w{args.workers}-b{args.coreml_batch}-s{args.gpu_streams}-l{args.mcts_lanes}`)',
             f'- **Training**: {args.updates} W4 updates/cohort on MPS, `value_loss_weight={args.value_loss_weight}x`, `replay_cohorts={args.replay_cohorts}`, lowest validation selection, no auto-deployment',
             '',
-            '| Cohort | Model | Best Step | Val Loss | Val Policy NLL | Val Value BCE | Test Loss | Test Top-1 | Best Checkpoint |',
+            '| Cohort | Model | Best Step | Val Loss | Val Policy NLL | Val Value BCE | Val Brier | Val Top-1 | Best Checkpoint |',
             '|---|---|---:|---:|---:|---:|---:|---:|---|',
         ]
         for s in cohort_summaries:
@@ -1062,17 +1172,16 @@ def main():
             for name in ('cnn', 'transformer'):
                 entry = s['results'][name]
                 vm = entry['metrics']['best_val']['validation']
-                tm = entry['metrics']['best_val']['test']
                 cp = entry['best_checkpoint']['path']
                 print(
                     f'{cnum:03d}      {name:<12} {str(entry["best_step"]):>8} {vm["selection_loss"]:>10.4f} '
-                    f'{vm["policy_nll"]:>9.4f} {vm["value_bce"]:>9.4f} {tm["selection_loss"]:>10.4f} '
-                    f'{tm["top1_accuracy"]*100:>9.2f}% {cp}'
+                    f'{vm["policy_nll"]:>9.4f} {vm["value_bce"]:>9.4f} {vm["brier"]:>10.4f} '
+                    f'{vm["top1_accuracy"]*100:>9.2f}% {cp}'
                 )
                 lines.append(
                     f'| {cnum:03d} | {name} | {entry["best_step"]} | {vm["selection_loss"]:.4f} | '
-                    f'{vm["policy_nll"]:.4f} | {vm["value_bce"]:.4f} | {tm["selection_loss"]:.4f} | '
-                    f'{tm["top1_accuracy"]*100:.2f}% | `{cp}` |'
+                    f'{vm["policy_nll"]:.4f} | {vm["value_bce"]:.4f} | {vm["brier"]:.4f} | '
+                    f'{vm["top1_accuracy"]*100:.2f}% | `{cp}` |'
                 )
         (args.output / 'REPORT.md').write_text('\n'.join(lines) + '\n')
         print(f'\nSaved summary to {args.output / "multi_cohort_summary.json"} and {args.output / "REPORT.md"}')

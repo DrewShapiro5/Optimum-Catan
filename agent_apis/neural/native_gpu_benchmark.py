@@ -14,6 +14,7 @@ from pathlib import Path
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -25,6 +26,7 @@ from agent_apis import benchmark
 from agent_apis.experiment import ROOT, digest, file_digest
 from agent_apis.observation import require
 from agent_apis.neural import compact_iterations as compact, selfplay
+from agent_apis.neural.device_utils import resolve_torch_device
 from agent_apis.neural.native_assets import (
     NATIVE,
     ensure_binary,
@@ -36,6 +38,7 @@ from agent_apis.neural.native_gpu_server import (
     BinaryGpuBatchServer,
     FEATURES_DIM,
     export_checkpoint_coreml_static,
+    export_checkpoint_dynamic,
     load_inference_model,
 )
 from agent_apis.neural.native_selfplay import (
@@ -59,15 +62,16 @@ DEFAULT_CHECKPOINT = DEFAULT_CHECKPOINTS['cnn']
 DEFAULT_OUTPUT = DEFAULT_OUTPUTS['cnn']
 
 
-def check_mps_parity(checkpoint_ref):
-    """Verify numerical parity between PyTorch CPU and PyTorch MPS on real encoded observations."""
-    if not torch.backends.mps.is_available():
-        return {'available': False, 'reason': 'MPS not available'}
+def check_gpu_parity(checkpoint_ref, device='auto'):
+    """Verify numerical parity between PyTorch CPU and PyTorch GPU (CUDA or MPS) on real observations."""
+    dev = resolve_torch_device(device)
+    if dev == 'cpu':
+        return {'available': False, 'device': 'cpu', 'reason': 'No CUDA or MPS GPU available'}
     from catanatron.serialization import web_view
     from agent_apis.observation import encode_observation, from_web_view
 
     cpu_model = load_inference_model(ROOT / checkpoint_ref['path'], device='cpu')
-    mps_model = load_inference_model(ROOT / checkpoint_ref['path'], device='mps')
+    gpu_model = load_inference_model(ROOT / checkpoint_ref['path'], device=dev)
     samples = []
     for idx in range(32):
         game = benchmark.make_game(make_pair(2026111999, idx), friendly_robber=True)
@@ -82,13 +86,14 @@ def check_mps_parity(checkpoint_ref):
         for b in (1, 16, 32):
             x = torch.from_numpy(all_x[:b])
             c_logits, c_val = cpu_model(x)
-            m_logits, m_val = mps_model(x.to('mps'))
-            logit_diff = float((c_logits - m_logits.cpu()).abs().max().item())
-            val_diff = float((c_val.sigmoid() - m_val.cpu().sigmoid()).abs().max().item())
+            g_logits, g_val = gpu_model(x.to(dev))
+            logit_diff = float((c_logits - g_logits.cpu()).abs().max().item())
+            val_diff = float((c_val.sigmoid() - g_val.cpu().sigmoid()).abs().max().item())
             max_logit_diff = max(max_logit_diff, logit_diff)
             max_val_diff = max(max_val_diff, val_diff)
     return {
         'available': True,
+        'device': dev,
         'max_logit_diff': max_logit_diff,
         'max_value_prob_diff': max_val_diff,
         'passed': max_logit_diff < 1e-3 and max_val_diff < 1e-4,
@@ -339,7 +344,7 @@ def run_timed_mps_socket(
             return i
 
     try:
-        clients = [SocketNativeClient(binary, socket_path, wid) for wid in range(workers)]
+        clients = [SocketNativeClient(binary, server.endpoint, wid) for wid in range(workers)]
         started = time.perf_counter()
         deadline = time.time() + seconds
 
@@ -621,11 +626,17 @@ def main():
     parser.add_argument('--seconds', type=int, default=120, help='Timed window per configuration (seconds)')
     parser.add_argument('--simulations', type=int, default=128)
     parser.add_argument('--seed', type=int, default=2026111901)
+    has_cuda = torch.cuda.is_available()
+    has_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    is_macos = sys.platform == 'darwin'
     parser.add_argument('--cpu-workers', type=str, default='12')
     parser.add_argument('--mps-workers', type=str, default='12,16,24,48,64')
     parser.add_argument('--coreml-workers', type=str, default='16,32')
     parser.add_argument('--coreml-batch', type=int, default=32, help='Static padded batch size for CoreML EP')
-    parser.add_argument('--gpu-streams', type=int, default=1, help='Concurrent GPU inference streams for CoreML pool')
+    parser.add_argument('--cuda-workers', type=str, default='32,64,128', help='Comma-separated worker counts for in-process Rust CUDA EP pool')
+    parser.add_argument('--cuda-batch', type=int, default=64, help='Max dynamic batch size for CUDA EP pool')
+    parser.add_argument('--cuda-socket-workers', type=str, default='32,64', help='Comma-separated worker counts for PyTorch CUDA socket server')
+    parser.add_argument('--gpu-streams', type=int, default=1, help='Concurrent GPU inference streams for CoreML/CUDA pool')
     parser.add_argument('--mcts-lanes', type=int, default=1, help='Concurrent virtual-loss MCTS lanes per game')
     parser.add_argument('--virtual-loss', type=float, default=1.0, help='Virtual loss penalty when --mcts-lanes > 1')
     parser.add_argument('--mcts-opponent', choices=('self-policy', 'adversarial-puct', 'frozen-mlp'), default='self-policy', help='Opponent model inside MCTS simulations (default: self-policy)')
@@ -633,8 +644,10 @@ def main():
     parser.add_argument('--max-batch', type=int, default=64)
     parser.add_argument('--wait-us', type=int, default=500)
     parser.add_argument('--skip-cpu', action='store_true')
-    parser.add_argument('--skip-coreml', action='store_true')
-    parser.add_argument('--skip-mps', action='store_true')
+    parser.add_argument('--skip-coreml', action='store_true', default=not is_macos)
+    parser.add_argument('--skip-mps', action='store_true', default=not has_mps)
+    parser.add_argument('--skip-cuda', action='store_true', default=not has_cuda)
+    parser.add_argument('--skip-cuda-socket', action='store_true', default=not has_cuda)
     parser.add_argument('--merge-existing', action='store_true', help='Merge new runs into existing summary.json')
     parser.add_argument('--print-games', action='store_true', help='Print a line to console whenever a game completes')
     args = parser.parse_args()
@@ -661,9 +674,10 @@ def main():
     candidate_onnx = export_checkpoint(candidate)
     frozen_onnx = export_checkpoint(frozen)
     coreml_onnx = None if args.skip_coreml else export_checkpoint_coreml_static(candidate, batch_size=args.coreml_batch)
+    cuda_onnx = None if args.skip_cuda else export_checkpoint_dynamic(candidate)
 
-    parity = check_mps_parity(candidate)
-    print(f'MPS numerical parity check: {json.dumps(parity)}', flush=True)
+    parity = check_gpu_parity(candidate, device='auto')
+    print(f'GPU numerical parity check: {json.dumps(parity)}', flush=True)
 
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
@@ -696,7 +710,7 @@ def main():
                 )
 
         if not args.skip_mps:
-            require(torch.backends.mps.is_available(), 'PyTorch MPS is required for --mps-workers (run outside sandbox)')
+            require(has_mps, 'PyTorch MPS is required for --mps-workers')
             for w in parse_worker_list(args.mps_workers):
                 print(
                     f'\n[RUN] Rust + Batched MPS GPU queue ({w} workers, max_batch={args.max_batch}, '
@@ -771,6 +785,83 @@ def main():
                 except Exception as exc:
                     print(f'  -> CoreML EP pool failed: {exc}', flush=True)
                     record_result({'name': f'rust-coreml-pool-w{w}-b{args.coreml_batch}', 'error': str(exc)})
+
+        if not args.skip_cuda_socket:
+            require(has_cuda, 'PyTorch CUDA is required for --cuda-socket-workers')
+            for w in parse_worker_list(args.cuda_socket_workers):
+                print(
+                    f'\n[RUN] Rust + Batched CUDA GPU socket ({w} workers, max_batch={args.max_batch}, '
+                    f'wait={args.wait_us}us, {args.seconds}s)...',
+                    flush=True,
+                )
+                res = run_timed_mps_socket(
+                    binary,
+                    w,
+                    args.seconds,
+                    args.seed,
+                    candidate,
+                    frozen,
+                    candidate_onnx,
+                    frozen_onnx,
+                    protocol,
+                    args.output / f'cuda-socket-w{w}-l{args.mcts_lanes}',
+                    args.max_batch,
+                    args.wait_us,
+                    device='cuda',
+                    lanes=args.mcts_lanes,
+                    virtual_loss=args.virtual_loss,
+                    mcts_opponent=args.mcts_opponent,
+                    print_games=args.print_games,
+                )
+                record_result(res)
+                bs = res['batch_stats']
+                print(
+                    f'  -> {res["turns_per_second"]:.2f} turns/s | {res["decisions_per_second"]:.2f} dec/s | '
+                    f'{res["simulations_per_second"]:.0f} sims/s | {res["completed_games"]} completed | '
+                    f'mean_batch={bs["mean_batch_size"]:.1f}',
+                    flush=True,
+                )
+
+        if not args.skip_cuda:
+            for w in parse_worker_list(args.cuda_workers):
+                print(
+                    f'\n[RUN] Rust In-Process Pool + Dynamic CUDA EP ({w} workers, max_batch={args.cuda_batch}, '
+                    f'streams={args.gpu_streams}, lanes={args.mcts_lanes}, wait={args.wait_us}us, {args.seconds}s)...',
+                    flush=True,
+                )
+                try:
+                    res = run_timed_inprocess_pool(
+                        binary,
+                        w,
+                        args.seconds,
+                        args.seed,
+                        candidate,
+                        frozen,
+                        cuda_onnx,
+                        frozen_onnx,
+                        protocol,
+                        args.output / f'cuda-w{w}-b{args.cuda_batch}-s{args.gpu_streams}-l{args.mcts_lanes}',
+                        'cuda',
+                        args.cuda_batch,
+                        args.wait_us,
+                        fixed_batch=0,
+                        streams=args.gpu_streams,
+                        lanes=args.mcts_lanes,
+                        virtual_loss=args.virtual_loss,
+                        mcts_opponent=args.mcts_opponent,
+                        print_games=args.print_games,
+                    )
+                    record_result(res)
+                    bs = res['batch_stats']
+                    print(
+                        f'  -> {res["turns_per_second"]:.2f} turns/s | {res["decisions_per_second"]:.2f} dec/s | '
+                        f'{res["simulations_per_second"]:.0f} sims/s | {res["completed_games"]} completed | '
+                        f'mean_batch={bs["mean_batch_size"]:.1f}',
+                        flush=True,
+                    )
+                except Exception as exc:
+                    print(f'  -> CUDA EP pool failed: {exc}', flush=True)
+                    record_result({'name': f'rust-cuda-pool-w{w}-b{args.cuda_batch}', 'error': str(exc)})
 
     baseline = next((r for r in results if r.get('backend') == 'rust-onnx-cpu'), None)
     base_dec = baseline['decisions_per_second'] if baseline else 0.0

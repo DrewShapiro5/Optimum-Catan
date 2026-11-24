@@ -45,7 +45,10 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<ServeMode, 
     let mut pool = false;
     let mut bridge_pool = false;
     let mut workers: usize = 12;
+    #[cfg(target_os = "macos")]
     let mut backend = batch_gpu::InProcessBackend::CoreML;
+    #[cfg(not(target_os = "macos"))]
+    let mut backend = batch_gpu::InProcessBackend::Cuda;
     let mut max_batch: usize = 64;
     let mut wait_us: u64 = 500;
     let mut fixed_batch: usize = 0;
@@ -83,9 +86,10 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<ServeMode, 
             "--gpu-backend" => {
                 let v = iter
                     .next()
-                    .ok_or_else(|| "--gpu-backend requires coreml or cpu-batch".to_string())?;
+                    .ok_or_else(|| "--gpu-backend requires coreml, cuda, or cpu-batch".to_string())?;
                 backend = match v.as_str() {
                     "coreml" => batch_gpu::InProcessBackend::CoreML,
+                    "cuda" => batch_gpu::InProcessBackend::Cuda,
                     "cpu-batch" => batch_gpu::InProcessBackend::CpuBatch,
                     _ => return Err(format!("Unsupported --gpu-backend '{v}'")),
                 };

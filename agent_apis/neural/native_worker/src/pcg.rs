@@ -1,6 +1,8 @@
 //! Native SeedSequence/PCG64 compatibility and NumPy's standalone C distribution
 //! kernels. No Python API is called or linked. See native/ licensing notices.
+#[cfg(target_os = "macos")]
 use std::ffi::c_void;
+#[cfg(target_os = "macos")]
 #[repr(C)]
 struct BitGen {
     state: *mut c_void,
@@ -9,6 +11,7 @@ struct BitGen {
     nextdouble: unsafe extern "C" fn(*mut c_void) -> f64,
     nextraw: unsafe extern "C" fn(*mut c_void) -> u64,
 }
+#[cfg(target_os = "macos")]
 extern "C" {
     fn random_standard_gamma(g: *mut BitGen, shape: f64) -> f64;
     fn random_beta(g: *mut BitGen, a: f64, b: f64) -> f64;
@@ -96,6 +99,7 @@ impl Pcg {
             v as u32
         }
     }
+    #[cfg(target_os = "macos")]
     fn bitgen(&mut self) -> BitGen {
         BitGen {
             state: self as *mut _ as *mut c_void,
@@ -105,45 +109,129 @@ impl Pcg {
             nextraw: next64,
         }
     }
+    #[cfg(not(target_os = "macos"))]
+    fn standard_normal(&mut self) -> f64 {
+        loop {
+            let u1 = self.uniform();
+            let u2 = self.uniform();
+            if u1 > 0.0 {
+                return (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    fn standard_gamma(&mut self, shape: f64) -> f64 {
+        if shape <= 0.0 {
+            return 0.0;
+        }
+        if shape < 1.0 {
+            loop {
+                let u = self.uniform();
+                if u > 0.0 {
+                    return self.standard_gamma(shape + 1.0) * u.powf(1.0 / shape);
+                }
+            }
+        }
+        let d = shape - 1.0 / 3.0;
+        let c = (1.0 / (9.0 * d)).sqrt();
+        loop {
+            let x = self.standard_normal();
+            let v = 1.0 + c * x;
+            if v <= 0.0 {
+                continue;
+            }
+            let v = v * v * v;
+            let u = self.uniform();
+            if u < 1.0 - 0.0331 * (x * x) * (x * x) {
+                return d * v;
+            }
+            if u > 0.0 && u.ln() < 0.5 * x * x + d * (1.0 - v + v.ln()) {
+                return d * v;
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    fn sample_beta(&mut self, a: f64, b: f64) -> f64 {
+        let ga = self.standard_gamma(a);
+        let gb = self.standard_gamma(b);
+        let s = ga + gb;
+        if s > 0.0 { ga / s } else { 0.5 }
+    }
     pub fn dirichlet(&mut self, n: usize) -> Vec<f64> {
         assert!(n > 0);
         let a = 10. / n as f64;
-        let mut bg = self.bitgen();
-        let mut vals = vec![0.; n];
-        if a < 0.1 {
-            let mut tail = vec![0.; n];
-            let mut sum = 0.;
-            for i in (0..n).rev() {
-                sum += a;
-                tail[i] = sum;
+        #[cfg(target_os = "macos")]
+        {
+            let mut bg = self.bitgen();
+            let mut vals = vec![0.; n];
+            if a < 0.1 {
+                let mut tail = vec![0.; n];
+                let mut sum = 0.;
+                for i in (0..n).rev() {
+                    sum += a;
+                    tail[i] = sum;
+                }
+                let mut acc = 1.;
+                for i in 0..n - 1 {
+                    let v = unsafe { random_beta(&mut bg, a, tail[i + 1]) };
+                    vals[i] = acc * v;
+                    acc *= 1. - v;
+                }
+                vals[n - 1] = acc;
+            } else {
+                let mut sum = 0.;
+                for v in &mut vals {
+                    *v = unsafe { random_standard_gamma(&mut bg, a) };
+                    sum += *v;
+                }
+                let inv = 1. / sum;
+                for v in &mut vals {
+                    *v *= inv;
+                }
             }
-            let mut acc = 1.;
-            for i in 0..n - 1 {
-                let v = unsafe { random_beta(&mut bg, a, tail[i + 1]) };
-                vals[i] = acc * v;
-                acc *= 1. - v;
-            }
-            vals[n - 1] = acc;
-        } else {
-            let mut sum = 0.;
-            for v in &mut vals {
-                *v = unsafe { random_standard_gamma(&mut bg, a) };
-                sum += *v;
-            }
-            let inv = 1. / sum;
-            for v in &mut vals {
-                *v *= inv;
-            }
+            vals
         }
-        vals
+        #[cfg(not(target_os = "macos"))]
+        {
+            let mut vals = vec![0.; n];
+            if a < 0.1 {
+                let mut tail = vec![0.; n];
+                let mut sum = 0.;
+                for i in (0..n).rev() {
+                    sum += a;
+                    tail[i] = sum;
+                }
+                let mut acc = 1.;
+                for i in 0..n - 1 {
+                    let v = self.sample_beta(a, tail[i + 1]);
+                    vals[i] = acc * v;
+                    acc *= 1. - v;
+                }
+                vals[n - 1] = acc;
+            } else {
+                let mut sum = 0.;
+                for v in &mut vals {
+                    *v = self.standard_gamma(a);
+                    sum += *v;
+                }
+                let inv = if sum > 0.0 { 1. / sum } else { 1. / n as f64 };
+                for v in &mut vals {
+                    *v = if sum > 0.0 { *v * inv } else { inv };
+                }
+            }
+            vals
+        }
     }
 }
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn next64(s: *mut c_void) -> u64 {
     (*(s as *mut Pcg)).raw()
 }
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn next32(s: *mut c_void) -> u32 {
     (*(s as *mut Pcg)).bits32()
 }
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn nextdouble(s: *mut c_void) -> f64 {
     (*(s as *mut Pcg)).uniform()
 }

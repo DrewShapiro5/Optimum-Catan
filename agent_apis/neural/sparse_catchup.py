@@ -69,7 +69,12 @@ class SparseCatchup(catchup.Catchup):
         if path.exists():
             r=json.loads(path.read_text());self.load_sparse(r['checkpoint']);return r
         self.state['stage']='train-W4';self.persist()
-        checkpoint=self.load_sparse(self.parent);model=checkpoint.model.to('mps');device='mps'
+        from agent_apis.neural.device_utils import (
+            configure_torch_device, get_device_rng_state, resolve_torch_device, set_device_rng_state,
+        )
+        device=resolve_torch_device(getattr(self,'device',None) or 'auto')
+        configure_torch_device(device)
+        checkpoint=self.load_sparse(self.parent);model=checkpoint.model.to(device)
         config=deepcopy(checkpoint.metadata['configuration']);config.update(phase=9,stage='friendly-W4-selfplay-continuation')
         config['rules']['friendly_robber']=True;config['data'].update(weighting='W4',source_schema=3,source_features=681,corpora=[str(corpus.relative_to(ROOT))],
             selfplay={'sampling_and_datasets_sha256':digest(new.summary),'expert_fraction':.5},
@@ -88,7 +93,9 @@ class SparseCatchup(catchup.Catchup):
             saved=torch.load(resume,map_location='cpu',weights_only=True)
             require(saved['core']==self.core and saved['data_sha']==data_sha,'W4 resume data changed')
             model.load_state_dict(saved['state_dict']);optimizer.load_state_dict(saved['optimizer'])
-            rng.bit_generator.state=saved['sampling_rng'];aug.set_state(saved['augmentation_rng']);torch.random.set_rng_state(saved['torch_rng']);torch.mps.set_rng_state(saved['mps_rng'])
+            rng.bit_generator.state=saved['sampling_rng'];aug.set_state(saved['augmentation_rng']);torch.random.set_rng_state(saved['torch_rng'])
+            if saved.get('device', 'mps') == device:
+                set_device_rng_state(device, saved.get('device_rng', saved.get('mps_rng')))
             step,history,seconds=saved['step'],saved['validation'],saved['elapsed_seconds']
         else:
             history=[{'step':0,**evaluate(model,self.cache,'validation',device)}]
@@ -96,9 +103,13 @@ class SparseCatchup(catchup.Catchup):
                 meta['step']=0;save_checkpoint(folder/'best.pt',model,meta)
         started=time.perf_counter()
         def save():
-            torch.save({'state_dict':model.state_dict(),'optimizer':optimizer.state_dict(),'step':step,'validation':history,
+            dev_rng = get_device_rng_state(device)
+            payload = {'state_dict':model.state_dict(),'optimizer':optimizer.state_dict(),'step':step,'validation':history,
                 'sampling_rng':rng.bit_generator.state,'augmentation_rng':aug.get_state(),'torch_rng':torch.random.get_rng_state(),
-                'mps_rng':torch.mps.get_rng_state(),'core':self.core,'data_sha':data_sha,'elapsed_seconds':seconds+time.perf_counter()-started},folder/'resume.tmp')
+                'device':device,'device_rng':dev_rng,'core':self.core,'data_sha':data_sha,'elapsed_seconds':seconds+time.perf_counter()-started}
+            if device == 'mps':
+                payload['mps_rng'] = dev_rng
+            torch.save(payload, folder/'resume.tmp')
             (folder/'resume.tmp').replace(resume)
         # Save only complete optimizer-update boundaries. On a mid-update
         # failure, keep the last committed checkpoint and its matching RNGs.

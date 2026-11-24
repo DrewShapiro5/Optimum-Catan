@@ -1,16 +1,20 @@
 //! Batched GPU inference backends for native Rust self-play workers.
 //!
 //! Supports two GPU-batched modes alongside the default single-threaded CPU ONNX path:
-//! 1. `RemoteSocket`: Binary Unix-domain socket client sending raw `[f32; 681]` feature
-//!    vectors (single or multi-leaf batches) to a shared batched PyTorch MPS GPU server.
+//! 1. `RemoteSocket`: Binary Unix-domain or TCP (`tcp://host:port`) socket client sending raw
+//!    `[f32; 681]` feature vectors to a shared batched PyTorch (MPS/CUDA) GPU server.
 //! 2. `InProcessQueue`: In-process bounded Rust queue drained by `streams` concurrent GPU
-//!    owner threads running batched ONNX Runtime with Apple CoreML EP (or batched CPU).
+//!    owner threads running batched ONNX Runtime with CoreML EP, CUDA EP, or batched CPU.
 use super::*;
+use ort::execution_providers::CUDAExecutionProvider;
+#[cfg(target_os = "macos")]
 use ort::execution_providers::coreml::{
     CoreMLComputeUnits, CoreMLExecutionProvider, CoreMLModelFormat, CoreMLSpecializationStrategy,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write as IoWrite};
+use std::net::TcpStream;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Condvar, Mutex};
@@ -76,9 +80,32 @@ impl CandidateModel {
     }
 }
 
-/// Persistent binary Unix-domain socket client for the shared MPS GPU inference queue.
+enum GpuStream {
+    #[cfg(unix)]
+    Unix(UnixStream),
+    Tcp(TcpStream),
+}
+
+impl GpuStream {
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        match self {
+            #[cfg(unix)]
+            GpuStream::Unix(s) => s.write_all(buf),
+            GpuStream::Tcp(s) => s.write_all(buf),
+        }
+    }
+    fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
+        match self {
+            #[cfg(unix)]
+            GpuStream::Unix(s) => s.read_exact(buf),
+            GpuStream::Tcp(s) => s.read_exact(buf),
+        }
+    }
+}
+
+/// Persistent binary socket client (Unix-domain or TCP loopback) for the shared GPU inference queue.
 pub struct SocketClient {
-    stream: UnixStream,
+    stream: GpuStream,
     worker_id: u32,
     sequence: u32,
     req_buf: Vec<u8>,
@@ -86,15 +113,40 @@ pub struct SocketClient {
 }
 
 impl SocketClient {
-    pub fn connect(socket_path: &str, worker_id: u32) -> Result<Self, String> {
-        let stream = UnixStream::connect(socket_path)
-            .map_err(|e| format!("Failed to connect to GPU socket {socket_path}: {e}"))?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(90)))
-            .map_err(|e| e.to_string())?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(90)))
-            .map_err(|e| e.to_string())?;
+    pub fn connect(endpoint: &str, worker_id: u32) -> Result<Self, String> {
+        let stream = if let Some(addr) = endpoint.strip_prefix("tcp://") {
+            let s = TcpStream::connect(addr)
+                .map_err(|e| format!("Failed to connect to GPU TCP endpoint {addr}: {e}"))?;
+            let _ = s.set_nodelay(true);
+            s.set_read_timeout(Some(Duration::from_secs(90)))
+                .map_err(|e| e.to_string())?;
+            s.set_write_timeout(Some(Duration::from_secs(90)))
+                .map_err(|e| e.to_string())?;
+            GpuStream::Tcp(s)
+        } else {
+            #[cfg(unix)]
+            {
+                let s = UnixStream::connect(endpoint)
+                    .map_err(|e| format!("Failed to connect to GPU socket {endpoint}: {e}"))?;
+                s.set_read_timeout(Some(Duration::from_secs(90)))
+                    .map_err(|e| e.to_string())?;
+                s.set_write_timeout(Some(Duration::from_secs(90)))
+                    .map_err(|e| e.to_string())?;
+                GpuStream::Unix(s)
+            }
+            #[cfg(not(unix))]
+            {
+                let s = TcpStream::connect(endpoint).map_err(|e| {
+                    format!("Failed to connect to GPU TCP endpoint {endpoint} (use tcp://host:port on Windows): {e}")
+                })?;
+                let _ = s.set_nodelay(true);
+                s.set_read_timeout(Some(Duration::from_secs(90)))
+                    .map_err(|e| e.to_string())?;
+                s.set_write_timeout(Some(Duration::from_secs(90)))
+                    .map_err(|e| e.to_string())?;
+                GpuStream::Tcp(s)
+            }
+        };
         Ok(Self {
             stream,
             worker_id,
@@ -205,6 +257,7 @@ impl SocketClient {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InProcessBackend {
     CoreML,
+    Cuda,
     CpuBatch,
 }
 
@@ -212,6 +265,7 @@ impl InProcessBackend {
     pub fn as_str(&self) -> &'static str {
         match self {
             InProcessBackend::CoreML => "rust-onnx-coreml-batch",
+            InProcessBackend::Cuda => "rust-onnx-cuda-batch",
             InProcessBackend::CpuBatch => "rust-onnx-cpu-batch",
         }
     }
@@ -305,24 +359,41 @@ fn batched_session(
     backend: InProcessBackend,
     static_shapes: bool,
 ) -> ort::Result<Session> {
-    // Serialize session creation so multiple CoreML streams never race writing
-    // into the same `coreml-cache` directory on a cold cache.
+    // Serialize session creation so multiple GPU streams never race initializing
+    // execution providers or writing into the same cache directory.
     let _init_guard = SESSION_INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let builder = Session::builder()?
         .with_intra_threads(1)?
         .with_inter_threads(1)?;
     match backend {
         InProcessBackend::CoreML => {
-            let mut ep = CoreMLExecutionProvider::default()
-                .with_model_format(CoreMLModelFormat::MLProgram)
-                .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
-                .with_static_input_shapes(static_shapes)
-                .with_specialization_strategy(CoreMLSpecializationStrategy::FastPrediction);
-            if let Some(parent) = path.parent() {
-                let cache_dir = parent.join("coreml-cache");
-                let _ = std::fs::create_dir_all(&cache_dir);
-                ep = ep.with_model_cache_dir(cache_dir.to_string_lossy());
+            #[cfg(target_os = "macos")]
+            {
+                let mut ep = CoreMLExecutionProvider::default()
+                    .with_model_format(CoreMLModelFormat::MLProgram)
+                    .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
+                    .with_static_input_shapes(static_shapes)
+                    .with_specialization_strategy(CoreMLSpecializationStrategy::FastPrediction);
+                if let Some(parent) = path.parent() {
+                    let cache_dir = parent.join("coreml-cache");
+                    let _ = std::fs::create_dir_all(&cache_dir);
+                    ep = ep.with_model_cache_dir(cache_dir.to_string_lossy());
+                }
+                builder
+                    .with_execution_providers([ep.build().error_on_failure()])?
+                    .commit_from_file(path)
             }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = (path, static_shapes, builder);
+                Err(ort::Error::new(
+                    "CoreML execution provider is only available on macOS; use --gpu-backend cuda or cpu-batch",
+                ))
+            }
+        }
+        InProcessBackend::Cuda => {
+            let _ = static_shapes;
+            let ep = CUDAExecutionProvider::default().with_device_id(0);
             builder
                 .with_execution_providers([ep.build().error_on_failure()])?
                 .commit_from_file(path)

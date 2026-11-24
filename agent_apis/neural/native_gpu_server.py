@@ -7,13 +7,13 @@ Mirrors the batching contract of `agent_apis.neural.shared_inference`:
   and receive raw `[f32; 332]` policy logits + `f32` value logit.
 """
 from collections import Counter
-import fcntl
 import json
 import os
 from pathlib import Path
 import selectors
 import socket
 import struct
+import sys
 import threading
 import time
 import traceback
@@ -23,6 +23,7 @@ import torch
 
 from agent_apis.experiment import ROOT, digest, file_digest
 from agent_apis.observation import require
+from agent_apis.neural.device_utils import configure_torch_device, file_lock, resolve_torch_device
 from agent_apis.neural.native_assets import CACHE, _EXPORT_LOCK
 from agent_apis.neural.pipeline import write
 from agent_apis.neural.provider import NeuralCheckpoint
@@ -340,8 +341,7 @@ def export_checkpoint_coreml_static(ref, batch_size=32):
         }
         folder = CACHE / digest(identity)
         folder.mkdir(parents=True, exist_ok=True)
-        with (folder / 'export.lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with (folder / 'export.lock').open('a') as lock, file_lock(lock):
             output = folder / 'model.onnx'
             manifest = folder / 'manifest.json'
             if manifest.exists():
@@ -404,8 +404,7 @@ def export_checkpoint_dynamic(ref):
         }
         folder = CACHE / digest(identity)
         folder.mkdir(parents=True, exist_ok=True)
-        with (folder / 'export.lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with (folder / 'export.lock').open('a') as lock, file_lock(lock):
             output = folder / 'model.onnx'
             manifest = folder / 'manifest.json'
             if manifest.exists():
@@ -459,12 +458,14 @@ def export_checkpoint_dynamic(ref):
 
 
 class BinaryGpuBatchServer:
-    """Single-thread kqueue/select Unix-socket server batching Rust worker inference on MPS/CPU."""
+    """Single-thread select server (Unix socket or TCP loopback) batching Rust worker inference on MPS/CUDA/CPU."""
 
     def __init__(self, socket_path, model_refs, device='mps', max_batch_rows=64, wait_seconds=0.0005):
-        self.socket_path = Path(socket_path)
+        self.use_tcp = sys.platform == 'win32' or (isinstance(socket_path, str) and socket_path.startswith('tcp://')) or socket_path is None
+        self.socket_path = None if self.use_tcp else Path(socket_path)
+        self.endpoint = str(socket_path) if self.use_tcp and socket_path else (None if self.use_tcp else str(self.socket_path))
         self.model_refs = dict(model_refs)  # {int model_id: ref_dict}
-        self.device = device
+        self.device = resolve_torch_device(device)
         self.max_batch_rows = max_batch_rows
         self.wait_seconds = wait_seconds
         self._stop_event = threading.Event()
@@ -486,7 +487,7 @@ class BinaryGpuBatchServer:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=30)
-        if self.socket_path.exists():
+        if self.socket_path is not None and self.socket_path.exists():
             try:
                 self.socket_path.unlink()
             except OSError:
@@ -500,8 +501,7 @@ class BinaryGpuBatchServer:
         sel = selectors.DefaultSelector()
         buffers = {}
         try:
-            if self.device == 'mps':
-                require(torch.backends.mps.is_available(), 'PyTorch MPS GPU device is not available')
+            configure_torch_device(self.device)
             torch.set_num_threads(1)
             models = {}
             for model_id, ref in self.model_refs.items():
@@ -509,7 +509,7 @@ class BinaryGpuBatchServer:
                 models[int(model_id)] = load_inference_model(ROOT / ref['path'], device=self.device)
             torch.set_num_threads(1)
 
-            # Warmup MPS kernels before accepting workers.
+            # Warmup GPU kernels before accepting workers.
             with torch.inference_mode():
                 dummy = torch.zeros((4, FEATURES_DIM), dtype=torch.float32, device=self.device)
                 for m in models.values():
@@ -517,11 +517,25 @@ class BinaryGpuBatchServer:
                     _ = logits.cpu().numpy()
                     _ = val.cpu().numpy()
 
-            self.socket_path.parent.mkdir(parents=True, exist_ok=True)
-            if self.socket_path.exists():
-                self.socket_path.unlink()
-            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            server.bind(str(self.socket_path))
+            if self.use_tcp:
+                host, port = '127.0.0.1', 0
+                if self.endpoint and self.endpoint.startswith('tcp://'):
+                    addr = self.endpoint[len('tcp://'):]
+                    if ':' in addr:
+                        host, p = addr.rsplit(':', 1)
+                        port = int(p)
+                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                server.bind((host, port))
+                bound_host, bound_port = server.getsockname()
+                self.endpoint = f'tcp://{bound_host}:{bound_port}'
+            else:
+                self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+                if self.socket_path.exists():
+                    self.socket_path.unlink()
+                server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                server.bind(str(self.socket_path))
+                self.endpoint = str(self.socket_path)
             server.listen(128)
             server.setblocking(False)
             sel.register(server, selectors.EVENT_READ, data='accept')
@@ -624,7 +638,7 @@ class BinaryGpuBatchServer:
                 except Exception:
                     pass
             sel.close()
-            if self.socket_path.exists():
+            if self.socket_path is not None and self.socket_path.exists():
                 try:
                     self.socket_path.unlink()
                 except OSError:

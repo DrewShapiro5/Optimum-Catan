@@ -87,18 +87,15 @@ def validate_seeds(document, excluded):
 @contextmanager
 def exclusive_benchmark():
     """Do not permit overlapping harness runs, even across different outputs."""
-    import fcntl
+    from agent_apis.neural.device_utils import file_lock
     folder = ROOT / 'runs/catan-ai'
     folder.mkdir(parents=True, exist_ok=True)
     with (folder / '.benchmark.lock').open('a') as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with file_lock(lock, nonblocking=True):
+                yield
         except BlockingIOError as error:
             raise RuntimeError('Another benchmark is running; timing jobs must be serial') from error
-        try:
-            yield
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def quantile(values, fraction):

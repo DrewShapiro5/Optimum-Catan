@@ -38,10 +38,15 @@ from agent_apis.neural.native_assets import (
     export_checkpoint,
     runtime_environment,
 )
+from agent_apis.neural.device_utils import (
+    nonexistent_stop_file,
+    resolve_torch_device,
+)
 from agent_apis.neural.native_codec import Codec, job_meta
 from agent_apis.neural.native_gpu_server import (
     BinaryGpuBatchServer,
     export_checkpoint_coreml_static,
+    export_checkpoint_dynamic,
     load_inference_model,
 )
 from agent_apis.neural.native_selfplay import PROTOCOL_VERSION, validate_protocol
@@ -376,7 +381,7 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         'simulations': simulations,
         'seconds': None,
         'deadline': time.time() + 12 * 3600,
-        'stop_file': '/nonexistent-catan-stop-file',
+        'stop_file': nonexistent_stop_file(),
         'max_turns': max_turns,
         'max_actions': max_actions,
         'lanes': lanes,
@@ -401,23 +406,28 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
     frozen_onnx = export_checkpoint(frozen_ref)
     same_model = candidate_ref['sha256'] == opponent_ref['sha256']
 
-    if backend == 'coreml':
-        cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
-        opp_onnx = cand_onnx if same_model else export_checkpoint_coreml_static(opponent_ref, batch_size=coreml_batch)
+    if backend in ('coreml', 'cuda'):
+        if backend == 'coreml':
+            cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
+            opp_onnx = cand_onnx if same_model else export_checkpoint_coreml_static(opponent_ref, batch_size=coreml_batch)
+        else:
+            cand_onnx = export_checkpoint_dynamic(candidate_ref)
+            opp_onnx = cand_onnx if same_model else export_checkpoint_dynamic(opponent_ref)
         return _run_native_coreml_pool(
             binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss, max_turns, max_actions,
-            mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
+            gpu_backend=backend, mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
         )
 
     cand_onnx = export_checkpoint(candidate_ref)
     opp_onnx = cand_onnx if same_model else export_checkpoint(opponent_ref)
     server = None
     sock_dir = None
-    socket_path = None
+    socket_endpoint = None
     model_ids = None
-    if backend == 'mps':
-        require(torch.backends.mps.is_available(), 'PyTorch MPS GPU device is not available')
+    if backend in ('mps', 'cuda-socket'):
+        sock_device = 'cuda' if backend == 'cuda-socket' else 'mps'
+        resolve_torch_device(sock_device)
         sock_dir = Path(tempfile.mkdtemp(prefix='catan-matchup-'))
         socket_path = sock_dir / 'infer.sock'
         model_refs = {0: candidate_ref} if same_model else {0: candidate_ref, 1: opponent_ref}
@@ -425,10 +435,11 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
         server = BinaryGpuBatchServer(
             socket_path=socket_path,
             model_refs=model_refs,
-            device='mps',
+            device=sock_device,
             max_batch_rows=max_batch,
             wait_seconds=wait_us / 1_000_000.0,
         ).start()
+        socket_endpoint = server.endpoint
 
     try:
         work_q = queue.Queue()
@@ -439,8 +450,8 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
 
         def worker_fn(wid):
             cmd = [str(binary)]
-            if socket_path is not None:
-                cmd.extend(['--gpu-socket', str(socket_path), '--worker-id', str(wid)])
+            if socket_endpoint is not None:
+                cmd.extend(['--gpu-socket', str(socket_endpoint), '--worker-id', str(wid)])
             log = (NATIVE / 'target/worker-stderr.log').open('a')
             proc = subprocess.Popen(
                 cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
@@ -521,12 +532,13 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
 def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
                             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes,
                             virtual_loss, max_turns, max_actions,
-                            mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                            gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
     n_workers = min(workers, len(schedule))
+    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     log = (NATIVE / 'target/worker-stderr.log').open('a')
     cmd = [
-        str(binary), '--pool', '--workers', str(n_workers), '--gpu-backend', 'coreml',
-        '--max-batch', str(coreml_batch), '--fixed-batch', str(coreml_batch),
+        str(binary), '--pool', '--workers', str(n_workers), '--gpu-backend', gpu_backend,
+        '--max-batch', str(coreml_batch), '--fixed-batch', str(fixed_batch),
         '--wait-us', str(wait_us), '--gpu-streams', str(gpu_streams),
     ]
     proc = subprocess.Popen(
@@ -606,14 +618,16 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
 
 
 class NativeBridgePool:
-    """Thread-safe client for `catan-native-worker --bridge-pool` (CoreML GPU vs JSettlers)."""
+    """Thread-safe client for `catan-native-worker --bridge-pool` (CoreML/CUDA GPU vs JSettlers)."""
 
-    def __init__(self, binary, workers, backend, coreml_batch, wait_us, gpu_streams):
+    def __init__(self, binary, workers, backend, coreml_batch, wait_us, gpu_streams, fixed_batch=None):
         self.log = (NATIVE / 'target/worker-stderr.log').open('a')
+        if fixed_batch is None:
+            fixed_batch = coreml_batch if backend == 'coreml' else 0
         cmd = [
             str(binary), '--bridge-pool', '--workers', str(workers),
             '--gpu-backend', backend,
-            '--max-batch', str(coreml_batch), '--fixed-batch', str(coreml_batch),
+            '--max-batch', str(coreml_batch), '--fixed-batch', str(fixed_batch),
             '--wait-us', str(wait_us), '--gpu-streams', str(gpu_streams),
         ]
         self.proc = subprocess.Popen(
@@ -677,14 +691,19 @@ class NativeBridgePool:
 def run_native_jsettlers_coreml(
     schedule, candidate_ref, frozen_ref, simulations, workers,
     coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss,
-    max_turns, max_actions, mcts_opponent='self-policy',
+    max_turns, max_actions, gpu_backend='coreml', mcts_opponent='self-policy',
 ):
-    """Run Model (native Rust + batched CoreML GPU) vs SMART JSettlers."""
+    """Run Model (native Rust + batched CoreML/CUDA GPU) vs SMART JSettlers."""
     binary = ensure_binary()
-    cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
+    if gpu_backend == 'coreml':
+        cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
+        fixed_batch = coreml_batch
+    else:
+        cand_onnx = export_checkpoint_dynamic(candidate_ref)
+        fixed_batch = 0
     frozen_onnx = export_checkpoint(frozen_ref)
     n_workers = min(workers, len(schedule))
-    bridge = NativeBridgePool(binary, n_workers, 'coreml', coreml_batch, wait_us, gpu_streams)
+    bridge = NativeBridgePool(binary, n_workers, gpu_backend, coreml_batch, wait_us, gpu_streams, fixed_batch=fixed_batch)
     results = []
     res_lock = threading.Lock()
 
@@ -881,9 +900,9 @@ def main():
     mode.add_argument('--policy-only', action='store_true', help='Pure greedy policy (0 MCTS simulations)')
     mode.add_argument('--simulations', '--candidate-simulations', dest='simulations', type=int, default=64, help='MCTS simulation budget per searched decision for the candidate (default: 64)')
     parser.add_argument('--opponent-simulations', type=int, default=None, help='Separate simulation count for the opponent model (default: matches --simulations; 0 = policy-only)')
-    parser.add_argument('--backend', choices=('cpu', 'mps', 'coreml'), default='cpu', help='Inference backend (mps/coreml accelerate model-vs-model search)')
+    parser.add_argument('--backend', choices=('cpu', 'mps', 'coreml', 'cuda', 'cuda-socket'), default='cpu', help='Inference backend (coreml/mps on macOS; cuda/cuda-socket on NVIDIA GPU)')
     parser.add_argument('--max-batch', type=int, default=64)
-    parser.add_argument('--coreml-batch', type=int, default=32)
+    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=32, help='GPU batch size for coreml (static) or cuda (max dynamic)')
     parser.add_argument('--wait-us', type=int, default=100)
     parser.add_argument('--gpu-streams', type=int, default=2)
     parser.add_argument('--mcts-lanes', type=int, default=1)
@@ -930,12 +949,12 @@ def main():
 
     started = time.perf_counter()
     with benchmark.exclusive_benchmark():
-        if opponent_kind == 'jsettlers' and simulations > 0 and args.backend == 'coreml' and not args.python_search:
+        if opponent_kind == 'jsettlers' and simulations > 0 and args.backend in ('coreml', 'cuda') and not args.python_search:
             results = run_native_jsettlers_coreml(
                 schedule, candidate_ref, frozen_ref, simulations, args.workers,
                 args.coreml_batch, args.wait_us, args.gpu_streams, args.mcts_lanes,
                 args.virtual_loss, args.max_turns, args.max_actions,
-                mcts_opponent=args.mcts_opponent,
+                gpu_backend=args.backend, mcts_opponent=args.mcts_opponent,
             )
         elif (
             opponent_kind == 'model'
@@ -952,7 +971,12 @@ def main():
                 opp_mcts_opponent=args.opponent_mcts_opponent,
             )
         else:
-            py_device = 'mps' if (args.backend == 'mps' and torch.backends.mps.is_available()) else 'cpu'
+            if args.backend in ('cuda', 'cuda-socket') and torch.cuda.is_available():
+                py_device = 'cuda'
+            elif args.backend == 'mps' and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                py_device = 'mps'
+            else:
+                py_device = 'cpu'
             results = run_python_matchup(
                 schedule, candidate_ref, opponent_ref, opponent_kind, frozen_ref,
                 simulations, args.opponent_simulations, args.workers, py_device,

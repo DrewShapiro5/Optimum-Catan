@@ -245,6 +245,7 @@ def collect_neural_block(
     gpu_backend='coreml',
     mcts_opponent='self-policy',
     vp_margin_alpha=0.03,
+    relative_fpu=True,
     setup_simulations=None,
     setup_exploration_games=0,
     setup_temperature=1.5,
@@ -329,6 +330,7 @@ def collect_neural_block(
                 'virtual_loss': virtual_loss,
                 'mcts_opponent': mcts_opponent,
                 'vp_margin_alpha': vp_margin_alpha,
+                'relative_fpu': relative_fpu,
                 'setup_simulations': eff_setup_sims,
                 'setup_temperature': setup_temperature if (setup_exploration_games > 0 and attempt < setup_exploration_games) else None,
             },
@@ -364,6 +366,7 @@ def collect_neural_block(
             'eval_mode': False,
             'mcts_opponent': mcts_opponent,
             'vp_margin_alpha': vp_margin_alpha,
+            'relative_fpu': relative_fpu,
         }
         if dynamic_onnx_a is not None and dynamic_onnx_b is not None:
             req['dynamic_models'] = [
@@ -457,6 +460,7 @@ def collect_jsettlers_block(
     gpu_backend='coreml',
     mcts_opponent='self-policy',
     vp_margin_alpha=0.03,
+    relative_fpu=True,
     setup_simulations=None,
     setup_exploration_games=0,
     setup_temperature=1.5,
@@ -537,6 +541,7 @@ def collect_jsettlers_block(
                 virtual_loss=virtual_loss, eval_mode=False,
                 mcts_opponent=mcts_opponent,
                 vp_margin_alpha=vp_margin_alpha,
+                relative_fpu=relative_fpu,
             )
             jsettlers = benchmark.Agent('JSETTLERS', opp_color, benchmark.named_seed(pair['agent_seed'], 'JSETTLERS'))
             initial_sha = compact.snapshot_digest(game)
@@ -605,6 +610,7 @@ def collect_jsettlers_block(
                     'virtual_loss': virtual_loss,
                     'mcts_opponent': mcts_opponent,
                     'vp_margin_alpha': vp_margin_alpha,
+                    'relative_fpu': relative_fpu,
                     'setup_simulations': eff_setup_sims,
                     'setup_temperature': game_setup_temp,
                     'search_protocol': protocol,
@@ -907,7 +913,7 @@ def run_one_cohort(
         f'Collection        : {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN '
         f'(w{args.workers}/js-w{args.jsettlers_workers}-jvms{args.jsettlers_jvms}, over_dispatch={args.tail_over_dispatch}, b{args.coreml_batch}-fixed{eff_fixed_batch}-s{args.gpu_streams}-l{args.mcts_lanes}, '
         f'backend={args.gpu_backend}, dtype={onnx_dtype}, {args.simulations} sims, setup_sims={eff_setup_sims}, setup_explore={setup_exp_total}@T={args.setup_temperature}, '
-        f'mcts_opponent={args.mcts_opponent}, vp_margin_alpha={args.vp_margin_alpha})',
+        f'mcts_opponent={args.mcts_opponent}, vp_margin_alpha={args.vp_margin_alpha}, relative_fpu={args.relative_fpu})',
         flush=True,
     )
 
@@ -935,6 +941,7 @@ def run_one_cohort(
             gpu_backend=args.gpu_backend,
             mcts_opponent=args.mcts_opponent,
             vp_margin_alpha=args.vp_margin_alpha,
+            relative_fpu=args.relative_fpu,
             setup_simulations=eff_setup_sims,
             setup_exploration_games=cnn_setup_exp,
             setup_temperature=args.setup_temperature,
@@ -953,6 +960,7 @@ def run_one_cohort(
             gpu_backend=args.gpu_backend,
             mcts_opponent=args.mcts_opponent,
             vp_margin_alpha=args.vp_margin_alpha,
+            relative_fpu=args.relative_fpu,
             setup_simulations=eff_setup_sims,
             setup_exploration_games=js_setup_exp,
             setup_temperature=args.setup_temperature,
@@ -993,6 +1001,7 @@ def run_one_cohort(
             'virtual_loss': args.virtual_loss,
             'mcts_opponent': args.mcts_opponent,
             'vp_margin_alpha': args.vp_margin_alpha,
+            'relative_fpu': args.relative_fpu,
             'simulations': args.simulations,
             'setup_simulations': eff_setup_sims,
             'setup_exploration_games': setup_exp_total,
@@ -1206,6 +1215,7 @@ def main():
     parser.add_argument('--mcts-opponent', choices=('self-policy', 'adversarial-puct', 'frozen-mlp'), default='self-policy', help='Opponent model inside MCTS simulations (default: self-policy)')
     parser.add_argument('--adversarial-puct', action='store_true', help='Shorthand for --mcts-opponent adversarial-puct')
     parser.add_argument('--vp-margin-alpha', type=float, default=0.03, help='Weight on (2p-1)^2-gated VP-margin utility in MCTS (default: 0.03; 0.0 disables)')
+    parser.add_argument('--relative-fpu', action=argparse.BooleanOptionalAction, default=True, help='Use parent-relative FPU in MCTS (--no-relative-fpu reverts to flat 0.5 FPU; default: enabled)')
     parser.add_argument('--wait-us', type=int, default=50)
     parser.add_argument('--updates', type=int, default=2000, help='W4 training updates per model per cohort')
     parser.add_argument('--value-loss-weight', type=float, default=0.25, help='Value loss multiplier during training (default: 0.25)')
@@ -1289,6 +1299,7 @@ def main():
             'n_cohorts': args.n_cohorts,
             'mcts_opponent': args.mcts_opponent,
             'vp_margin_alpha': args.vp_margin_alpha,
+            'relative_fpu': args.relative_fpu,
             'validation_fraction': args.validation_fraction,
             'replay_cohorts': args.replay_cohorts,
             'value_loss_weight': args.value_loss_weight,
@@ -1307,7 +1318,7 @@ def main():
         lines = [
             f'# CoreML Multi-Cohort Training Summary ({args.n_cohorts} cohorts)',
             '',
-            f'- **Games/cohort**: {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN ({args.simulations} sims, `mcts_opponent={args.mcts_opponent}`, `vp_margin_alpha={args.vp_margin_alpha}`, `validation_fraction={args.validation_fraction}`, `w{args.workers}-b{args.coreml_batch}-s{args.gpu_streams}-l{args.mcts_lanes}`)',
+            f'- **Games/cohort**: {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN ({args.simulations} sims, `mcts_opponent={args.mcts_opponent}`, `vp_margin_alpha={args.vp_margin_alpha}`, `relative_fpu={args.relative_fpu}`, `validation_fraction={args.validation_fraction}`, `w{args.workers}-b{args.coreml_batch}-s{args.gpu_streams}-l{args.mcts_lanes}`)',
             f'- **Training**: {args.updates} W4 updates/cohort on MPS, `value_loss_weight={args.value_loss_weight}x`, `replay_cohorts={args.replay_cohorts}`, lowest validation selection, no auto-deployment',
             '',
             '| Cohort | Model | Best Step | Val Loss | Val Policy NLL | Val Value BCE | Val Brier | Val Top-1 | Best Checkpoint |',

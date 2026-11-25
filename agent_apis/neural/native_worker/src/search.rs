@@ -254,29 +254,40 @@ impl Search {
         });
         i
     }
-    fn pick_own_puct_edge(&self, w: &World, enc: &Encoder, ni: usize, use_vl: bool) -> usize {
+    fn pick_own_puct_edge(
+        &self,
+        w: &World,
+        enc: &Encoder,
+        ni: usize,
+        use_vl: bool,
+        relative_fpu: bool,
+    ) -> usize {
         let parent_n = if use_vl {
             (self.nodes[ni].n + self.nodes[ni].vl_n).max(1) as f64
         } else {
             self.nodes[ni].n.max(1) as f64
         };
-        let mut visited_n = 0usize;
-        let mut visited_total = 0.0f64;
-        let mut visited_prior = 0.0f64;
-        for &i in &self.nodes[ni].edges {
-            let e = &self.edges[i];
-            if e.n > 0 {
-                visited_n += e.n;
-                visited_total += e.total;
-                visited_prior += e.prior;
+        let fpu = if relative_fpu {
+            let mut visited_n = 0usize;
+            let mut visited_total = 0.0f64;
+            let mut visited_prior = 0.0f64;
+            for &i in &self.nodes[ni].edges {
+                let e = &self.edges[i];
+                if e.n > 0 {
+                    visited_n += e.n;
+                    visited_total += e.total;
+                    visited_prior += e.prior;
+                }
             }
-        }
-        let parent_q = if visited_n > 0 {
-            visited_total / visited_n as f64
+            let parent_q = if visited_n > 0 {
+                visited_total / visited_n as f64
+            } else {
+                self.nodes[ni].value
+            };
+            (parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0)
         } else {
-            self.nodes[ni].value
+            0.5
         };
-        let fpu = (parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0);
         let score = |i: usize| {
             let e = &self.edges[i];
             if use_vl {
@@ -303,7 +314,13 @@ impl Search {
             })
             .unwrap()
     }
-    fn pick_adv_opp_edge(&mut self, w: &World, enc: &Encoder, ni: usize) -> usize {
+    fn pick_adv_opp_edge(
+        &mut self,
+        w: &World,
+        enc: &Encoder,
+        ni: usize,
+        relative_fpu: bool,
+    ) -> usize {
         let legal_edges: Vec<usize> = self.nodes[ni]
             .edges
             .iter()
@@ -315,19 +332,25 @@ impl Search {
         let mut visited_prior = 0.0f64;
         for &i in &legal_edges {
             self.edges[i].avail += 1;
-            let e = &self.edges[i];
-            if e.n > 0 {
-                visited_n += e.n;
-                visited_total += e.total;
-                visited_prior += e.prior;
+            if relative_fpu {
+                let e = &self.edges[i];
+                if e.n > 0 {
+                    visited_n += e.n;
+                    visited_total += e.total;
+                    visited_prior += e.prior;
+                }
             }
         }
-        let opp_parent_q = if visited_n > 0 {
-            1.0 - visited_total / visited_n as f64
+        let fpu_opp = if relative_fpu {
+            let opp_parent_q = if visited_n > 0 {
+                1.0 - visited_total / visited_n as f64
+            } else {
+                1.0 - self.nodes[ni].value
+            };
+            (opp_parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0)
         } else {
-            1.0 - self.nodes[ni].value
+            0.5
         };
-        let fpu_opp = (opp_parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0);
         let score = |i: usize| {
             let e = &self.edges[i];
             let q_opp = if e.n == 0 { fpu_opp } else { 1.0 - e.mean() };
@@ -1107,7 +1130,7 @@ impl SearchStepper {
                     });
                 };
                 self.search.check_own_node_invariants(&st.w, enc, ni);
-                let ei = self.search.pick_own_puct_edge(&st.w, enc, ni, use_vl);
+                let ei = self.search.pick_own_puct_edge(&st.w, enc, ni, use_vl, self.o.relative_fpu);
                 if use_vl {
                     self.search.edges[ei].vl_n += 1;
                     self.search.edges[ei].vl_loss += self.o.virtual_loss;
@@ -1144,7 +1167,7 @@ impl SearchStepper {
                             features,
                         });
                     }
-                    let ei = self.search.pick_adv_opp_edge(&st.w, enc, ni);
+                    let ei = self.search.pick_adv_opp_edge(&st.w, enc, ni, self.o.relative_fpu);
                     (ei, Some(ni), st.rd)
                 } else {
                     let actor = st.w.e.state.current;
@@ -1416,7 +1439,7 @@ impl SearchStepper {
                         self.search.op_paths.insert(state.path.clone(), ni);
                         ni
                     };
-                    let ei = self.search.pick_adv_opp_edge(&state.w, enc, ni);
+                    let ei = self.search.pick_adv_opp_edge(&state.w, enc, ni, self.o.relative_fpu);
                     let rd = state.rd;
                     let next_st = self.advance_descent(enc, state, ei, Some(ni), rd);
                     if let Some(features) = self.finish_single_descent(

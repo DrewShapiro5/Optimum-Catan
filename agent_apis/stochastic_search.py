@@ -104,7 +104,7 @@ class DecisionNode:
 class StochasticSearch:
     def __init__(self, view, seed=11, evaluator=None, opponent=None, merged=True,
                  c_puct=1.5, max_root_depth=None, max_actions=128, adversarial_puct=False,
-                 mcts_opponent=None, vp_margin_alpha=0.03):
+                 mcts_opponent=None, vp_margin_alpha=0.03, relative_fpu=True):
         validate_rules(view)
         require(math.isfinite(c_puct) and c_puct > 0 and (max_root_depth is None or max_root_depth >= 1) and max_actions >= 1,
                 'Invalid search limits or exploration constant')
@@ -118,6 +118,7 @@ class StochasticSearch:
         self.merged, self.c_puct = merged,c_puct
         self.max_root_depth, self.max_actions = max_root_depth,max_actions
         self.vp_margin_alpha = float(vp_margin_alpha)
+        self.relative_fpu = bool(relative_fpu)
         if mcts_opponent is None:
             mcts_opponent = 'adversarial-puct' if adversarial_puct else 'frozen-mlp'
         require(mcts_opponent in ('frozen-mlp', 'self-policy', 'adversarial-puct'),
@@ -233,16 +234,19 @@ class StochasticSearch:
             require(node.observation == self._view_key(game,self.root), 'Root history aliases distinct observations')
             require(set(node.edges)=={action_id(a) for a in game.playable_actions},
                     'Hidden world changed root legal actions directly')
-            visited_n = 0
-            visited_total = 0.0
-            visited_prior = 0.0
-            for e in node.edges.values():
-                if e.visits > 0:
-                    visited_n += e.visits
-                    visited_total += e.total
-                    visited_prior += e.prior
-            parent_q = (visited_total / visited_n) if visited_n > 0 else node.value
-            fpu = min(1.0, max(0.0, parent_q - 0.20 * math.sqrt(visited_prior)))
+            if self.relative_fpu:
+                visited_n = 0
+                visited_total = 0.0
+                visited_prior = 0.0
+                for e in node.edges.values():
+                    if e.visits > 0:
+                        visited_n += e.visits
+                        visited_total += e.total
+                        visited_prior += e.prior
+                parent_q = (visited_total / visited_n) if visited_n > 0 else node.value
+                fpu = min(1.0, max(0.0, parent_q - 0.20 * math.sqrt(visited_prior)))
+            else:
+                fpu = 0.5
             edge = max(node.edges.values(), key=lambda e:(
                 (e.mean if e.visits else fpu)+self.c_puct*e.prior*math.sqrt(max(1,node.visits))/(1+e.visits),
                 -action_id(e.action)))
@@ -273,12 +277,15 @@ class StochasticSearch:
                 visited_prior = 0.0
                 for e in legal_edges:
                     e.avail += 1
-                    if e.visits > 0:
+                    if self.relative_fpu and e.visits > 0:
                         visited_n += e.visits
                         visited_total += e.total
                         visited_prior += e.prior
-                opp_parent_q = (1.0 - visited_total / visited_n) if visited_n > 0 else (1.0 - node.value)
-                fpu_opp = min(1.0, max(0.0, opp_parent_q - 0.20 * math.sqrt(visited_prior)))
+                if self.relative_fpu:
+                    opp_parent_q = (1.0 - visited_total / visited_n) if visited_n > 0 else (1.0 - node.value)
+                    fpu_opp = min(1.0, max(0.0, opp_parent_q - 0.20 * math.sqrt(visited_prior)))
+                else:
+                    fpu_opp = 0.5
                 edge = max(legal_edges, key=lambda e:(
                     (1.0 - e.mean if e.visits else fpu_opp) + self.c_puct * e.prior * math.sqrt(max(1, e.avail)) / (1 + e.visits),
                     -action_id(e.action)))

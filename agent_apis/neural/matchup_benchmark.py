@@ -30,6 +30,7 @@ from catanatron.serialization import action_from_json, web_view
 
 from agent_apis import benchmark
 from agent_apis.experiment import ROOT, digest, file_digest
+from agent_apis.jsettlers import player as js_player
 from agent_apis.jsettlers.player import BRIDGE
 from agent_apis.neural import selfplay
 from agent_apis.neural.native_assets import (
@@ -40,6 +41,7 @@ from agent_apis.neural.native_assets import (
     runtime_environment,
 )
 from agent_apis.neural.device_utils import (
+    default_gpu_backend,
     nonexistent_stop_file,
     resolve_torch_device,
 )
@@ -124,6 +126,81 @@ def build_schedule(games, seed, paired=True):
     return schedule
 
 
+def build_overcommit_schedule(games, seed, paired=True, over_dispatch=0):
+    """Build schedule with optional extra games in flight to avoid batch=1 tail stalls."""
+    if over_dispatch <= 0:
+        return build_schedule(games, seed, paired=paired)
+    total = games + over_dispatch
+    if paired and total % 2 == 1:
+        total += 1
+    return build_schedule(total, seed, paired=paired)
+
+
+def _select_completed_results(results, target_games, paired):
+    """Return `target_games` finished results once ready (preserving complete BLUE/RED pairs if paired)."""
+    if len(results) < target_games:
+        return None
+    if not paired:
+        return sorted(results, key=lambda r: r['index'])[:target_games]
+    by_pair = {}
+    for r in results:
+        by_pair.setdefault(r['pair_idx'], []).append(r)
+    complete_pairs = [sorted(v, key=lambda r: r['index']) for k, v in sorted(by_pair.items()) if len(v) == 2]
+    needed_pairs = target_games // 2
+    if len(complete_pairs) < needed_pairs:
+        return None
+    chosen = [r for pair in complete_pairs[:needed_pairs] for r in pair]
+    if target_games % 2 == 1:
+        chosen_ids = {r['index'] for r in chosen}
+        extras = sorted((r for r in results if r['index'] not in chosen_ids), key=lambda r: r['index'])
+        if not extras:
+            return None
+        chosen.append(extras[0])
+    return sorted(chosen, key=lambda r: r['index'])
+
+
+def _batch_percentiles(hist):
+    if not hist:
+        return None, None, None
+    items = sorted((int(k), int(v)) for k, v in hist.items() if int(v) > 0)
+    total = sum(v for _, v in items)
+    if total == 0:
+        return None, None, None
+    def _pct(q):
+        target = max(1, math.ceil(q * total))
+        acc = 0
+        for k, v in items:
+            acc += v
+            if acc >= target:
+                return k
+        return items[-1][0]
+    return _pct(0.50), _pct(0.90), items[-1][0]
+
+
+def _format_pool_metrics(pm, label='GPU pool'):
+    if not pm or not pm.get('batches'):
+        return None
+    batches = pm['batches']
+    rows = pm.get('rows', 0)
+    mean_b = rows / batches
+    p50, p90, max_b = _batch_percentiles(pm.get('batch_rows_histogram'))
+    parts = [
+        f"{pm.get('requests', rows)} evals in {batches} batches",
+        f"mean_batch={mean_b:.1f}",
+    ]
+    if p50 is not None:
+        parts.append(f"p50={p50}/p90={p90}/max={max_b}")
+    if pm.get('dynamic_batches'):
+        parts.append(f"dyn_batches={pm['dynamic_batches']} ({pm.get('dynamic_rows', 0)} rows)")
+    if 'forward_seconds' in pm:
+        parts.append(f"forward={pm['forward_seconds']:.1f}s")
+    if 'queue_window_seconds' in pm:
+        parts.append(f"wait={pm['queue_window_seconds']:.1f}s")
+    if 'streams' in pm:
+        parts.append(f"streams={pm['streams']}")
+    return f"{label} stats: " + ', '.join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Python evaluator (used for Policy-Only and for Model vs JSettlers Search)
 # ---------------------------------------------------------------------------
@@ -194,7 +271,7 @@ def _py_worker_init(candidate_path, opponent_path, frozen_path, device):
     _WORKER_STATE['frozen'] = None if frozen_path is None else EvalModel(frozen_path, device='cpu')
 
 
-def _choose_search(model, frozen, game, color, simulations, search_session, rng, mcts_opponent='self-policy', vp_margin_alpha=0.03):
+def _choose_search(model, frozen, game, color, simulations, search_session, rng, mcts_opponent='self-policy', vp_margin_alpha=0.03, relative_fpu=True):
     from agent_apis.neural.subtree_reuse import SearchSession
     legal = list(game.playable_actions)
     if len(legal) == 1:
@@ -215,13 +292,15 @@ def _choose_search(model, frozen, game, color, simulations, search_session, rng,
         model_revision=(str(model.path), 0, str(frozen.path)),
         mcts_opponent=mcts_opponent,
         vp_margin_alpha=vp_margin_alpha,
+        relative_fpu=relative_fpu,
     )
     return action_from_json(result['action'])
 
 
 def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
                  mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                 vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
+                 vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03,
+                 relative_fpu=True, opp_relative_fpu=True):
     from agent_apis.neural.subtree_reuse import SearchSession
 
     pair = item['pair']
@@ -256,7 +335,7 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
                 else:
                     action = _choose_search(
                         cand_model, frozen, game, cand_color, simulations, cand_session, cand_rng,
-                        mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha,
+                        mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha, relative_fpu=relative_fpu,
                     )
             else:
                 if opponent_kind == 'jsettlers':
@@ -269,7 +348,7 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
                 else:
                     action = _choose_search(
                         opp_model, frozen, game, opp_color, opp_simulations, opp_session, opp_rng,
-                        mcts_opponent=opp_mcts_opponent, vp_margin_alpha=opp_vp_margin_alpha,
+                        mcts_opponent=opp_mcts_opponent, vp_margin_alpha=opp_vp_margin_alpha, relative_fpu=opp_relative_fpu,
                     )
             game.execute(action)
             actions += 1
@@ -295,7 +374,8 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
 def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, frozen_ref,
                        simulations, opp_simulations, workers, device, max_turns, max_actions,
                        mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                       vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
+                       vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03,
+                       relative_fpu=True, opp_relative_fpu=True):
     cand_path = str(ROOT / candidate_ref['path'])
     opp_path = None if opponent_kind == 'jsettlers' else str(ROOT / opponent_ref['path'])
     froz_path = None if (simulations == 0 and (opponent_kind == 'jsettlers' or opp_simulations == 0)) else str(ROOT / frozen_ref['path'])
@@ -317,6 +397,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
             _record(_py_play_one(
                 item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
                 mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
+                relative_fpu, opp_relative_fpu,
             ))
     else:
         try:
@@ -331,6 +412,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
                     pool.submit(
                         _py_play_one, item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
                         mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
+                        relative_fpu, opp_relative_fpu,
                     )
                     for item in schedule
                 ]
@@ -342,6 +424,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
                 _record(_py_play_one(
                     item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
                     mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
+                    relative_fpu, opp_relative_fpu,
                 ))
     results.sort(key=lambda r: r['index'])
     return results
@@ -355,7 +438,8 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
                          model_ids=None, lanes=1, virtual_loss=1.0, max_turns=1000, max_actions=10000,
                          mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
                          cand_dyn_onnx=None, opp_dyn_onnx=None,
-                         vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
+                         vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03,
+                         relative_fpu=True, opp_relative_fpu=True, stop_file=None):
     if opp_simulations is None:
         opp_simulations = simulations
     pair = item['pair']
@@ -369,6 +453,7 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
     seat_sims = [simulations if c == cand_color else opp_simulations for c in colors]
     seat_opp = [mcts_opponent if c == cand_color else opp_mcts_opponent for c in colors]
     seat_alpha = [vp_margin_alpha if c == cand_color else opp_vp_margin_alpha for c in colors]
+    seat_fpu = [relative_fpu if c == cand_color else opp_relative_fpu for c in colors]
     task = {
         'job': meta,
         'start': meta['initial'],
@@ -388,7 +473,7 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         'simulations': simulations,
         'seconds': None,
         'deadline': time.time() + 12 * 3600,
-        'stop_file': nonexistent_stop_file(),
+        'stop_file': str(stop_file) if stop_file is not None else nonexistent_stop_file(),
         'max_turns': max_turns,
         'max_actions': max_actions,
         'lanes': lanes,
@@ -396,6 +481,7 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         'eval_mode': True,
         'mcts_opponent': mcts_opponent,
         'vp_margin_alpha': vp_margin_alpha,
+        'relative_fpu': relative_fpu,
     }
     if simulations != opp_simulations:
         req['seat_simulations'] = seat_sims
@@ -403,6 +489,8 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         req['seat_mcts_opponent'] = seat_opp
     if vp_margin_alpha != opp_vp_margin_alpha:
         req['seat_vp_margin_alpha'] = seat_alpha
+    if relative_fpu != opp_relative_fpu:
+        req['seat_relative_fpu'] = seat_fpu
     if mids is not None:
         req['model_ids'] = mids
     if cand_dyn_onnx is not None and opp_dyn_onnx is not None:
@@ -415,7 +503,9 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
                              mcts_lanes, virtual_loss, max_turns, max_actions,
                              mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
                              dtype='float16', cuda_fixed_batch=False,
-                             vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
+                             vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03,
+                             relative_fpu=True, opp_relative_fpu=True,
+                             target_games=None, paired=True, tail_over_dispatch=0):
     binary = ensure_binary()
     frozen_onnx = export_checkpoint(frozen_ref)
     same_model = candidate_ref['sha256'] == opponent_ref['sha256']
@@ -444,6 +534,8 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
             gpu_backend=backend, mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
             fixed_batch=eff_fixed, cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
             vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
+            relative_fpu=relative_fpu, opp_relative_fpu=opp_relative_fpu,
+            target_games=target_games, paired=paired, tail_over_dispatch=tail_over_dispatch,
         )
 
     cand_onnx = export_checkpoint(candidate_ref)
@@ -499,6 +591,7 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
                         max_turns=max_turns, max_actions=max_actions,
                         mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
                         vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
+                        relative_fpu=relative_fpu, opp_relative_fpu=opp_relative_fpu,
                     )
                     proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
                     proc.stdin.flush()
@@ -555,7 +648,7 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
             shutil.rmtree(sock_dir, ignore_errors=True)
 
     results.sort(key=lambda r: r['index'])
-    return results
+    return results, {}
 
 
 def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
@@ -563,7 +656,10 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
                             virtual_loss, max_turns, max_actions,
                             gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
                             fixed_batch=None, cand_dyn_onnx=None, opp_dyn_onnx=None,
-                            vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
+                            vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03,
+                            relative_fpu=True, opp_relative_fpu=True,
+                            target_games=None, paired=True, tail_over_dispatch=0):
+    target_games = target_games or len(schedule)
     n_workers = min(workers, len(schedule))
     if fixed_batch is None:
         fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
@@ -573,11 +669,15 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
         '--max-batch', str(coreml_batch), '--fixed-batch', str(fixed_batch),
         '--wait-us', str(wait_us), '--gpu-streams', str(gpu_streams),
     ]
+    stop_dir = Path(tempfile.mkdtemp(prefix='catan-matchup-stop-')) if tail_over_dispatch > 0 else None
+    stop_flag = (stop_dir / '.stop') if stop_dir is not None else None
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
         text=True, bufsize=1, env=runtime_environment(),
     )
     results = []
+    selected = None
+    pool_metrics = {}
     meta_by_gid = {}
     next_i = 0
     in_flight = 0
@@ -597,6 +697,8 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
             mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
             cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
             vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
+            relative_fpu=relative_fpu, opp_relative_fpu=opp_relative_fpu,
+            stop_file=(stop_flag.resolve() if stop_flag is not None else None),
         )
         meta_by_gid[req['game_id']] = (item, colors)
         proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
@@ -613,7 +715,7 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
             msg = json.loads(line)
             mtype = msg.get('type')
             if mtype == 'error':
-                raise RuntimeError(f'CoreML pool error ({msg.get("game_id")}): {msg.get("error")}')
+                raise RuntimeError(f'{gpu_backend} pool error ({msg.get("game_id")}): {msg.get("error")}')
             elif mtype == 'events':
                 evs = msg.get('events') or ()
                 progress_actions += len(evs)
@@ -626,7 +728,7 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
                 if now - last_progress >= 10.0:
                     el = now - started
                     print(
-                        f'  [progress {el:5.1f}s] {len(results)}/{len(schedule)} completed | '
+                        f'  [progress {el:5.1f}s] {min(len(results), target_games)}/{target_games} completed | '
                         f'{progress_actions} actions ({progress_actions / el:.1f}/s) | '
                         f'{progress_decisions} dec ({progress_decisions / el:.1f}/s) | '
                         f'{progress_sims} sims ({progress_sims / el:.0f} sims/s) | '
@@ -636,44 +738,59 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
                     last_progress = now
             elif mtype == 'done':
                 item, colors = meta_by_gid.pop(msg['game_id'])
-                winner_idx = msg['winner']
-                winner_color = colors[winner_idx] if winner_idx >= 0 else None
-                cand_won = (winner_color == item['candidate_color']) if winner_color is not None else None
-                res = {
-                    'index': item['index'],
-                    'pair_id': item['pair']['pair_id'],
-                    'candidate_color': item['candidate_color'],
-                    'winner': winner_color,
-                    'candidate_won': cand_won,
-                    'status': msg['status'],
-                    'turns': msg['turns'],
-                    'actions': msg['actions'],
-                    'elapsed_seconds': msg['elapsed_seconds'],
-                }
-                results.append(res)
                 in_flight -= 1
-                outcome = 'WIN' if cand_won is True else ('LOSS' if cand_won is False else 'CUTOFF')
-                print(
-                    f"  [{len(results):>{len(str(len(schedule)))}}/{len(schedule)}] "
-                    f"{res['pair_id']} ({res['candidate_color']}): {outcome} in {res['turns']} turns ({res['elapsed_seconds']:.1f}s)",
-                    flush=True,
-                )
-                if next_i < len(schedule):
+                if selected is None:
+                    winner_idx = msg['winner']
+                    winner_color = colors[winner_idx] if winner_idx >= 0 else None
+                    cand_won = (winner_color == item['candidate_color']) if winner_color is not None else None
+                    res = {
+                        'index': item['index'],
+                        'pair_idx': item['pair_idx'],
+                        'pair_id': item['pair']['pair_id'],
+                        'candidate_color': item['candidate_color'],
+                        'winner': winner_color,
+                        'candidate_won': cand_won,
+                        'status': msg['status'],
+                        'turns': msg['turns'],
+                        'actions': msg['actions'],
+                        'elapsed_seconds': msg['elapsed_seconds'],
+                    }
+                    results.append(res)
+                    outcome = 'WIN' if cand_won is True else ('LOSS' if cand_won is False else 'CUTOFF')
+                    print(
+                        f"  [{len(results):>{len(str(target_games))}}/{target_games}] "
+                        f"{res['pair_id']} ({res['candidate_color']}): {outcome} in {res['turns']} turns ({res['elapsed_seconds']:.1f}s)",
+                        flush=True,
+                    )
+                    selected = _select_completed_results(results, target_games, paired)
+                    if selected is not None and stop_flag is not None:
+                        stop_flag.touch()
+                if selected is not None:
+                    if in_flight == 0 and not stdin_closed:
+                        proc.stdin.close()
+                        stdin_closed = True
+                elif next_i < len(schedule):
                     dispatch_one()
                 elif in_flight == 0 and not stdin_closed:
                     proc.stdin.close()
                     stdin_closed = True
             elif mtype == 'pool_metrics':
+                pool_metrics = msg.get('metrics', {})
                 break
-        proc.wait(timeout=15)
+        proc.wait(timeout=30)
     finally:
+        if stop_dir is not None:
+            shutil.rmtree(stop_dir, ignore_errors=True)
         if proc.poll() is None:
             proc.kill()
             proc.wait()
         log.close()
 
-    results.sort(key=lambda r: r['index'])
-    return results
+    stats_line = _format_pool_metrics(pool_metrics, label=f'{gpu_backend.upper()} pool')
+    if stats_line:
+        print(stats_line, flush=True)
+    final_results = selected if selected is not None else sorted(results, key=lambda r: r['index'])[:target_games]
+    return final_results, pool_metrics
 
 
 class NativeBridgePool:
@@ -753,8 +870,13 @@ def run_native_jsettlers_coreml(
     max_turns, max_actions, gpu_backend='coreml', mcts_opponent='self-policy',
     dtype='float16', cuda_fixed_batch=False,
     vp_margin_alpha=0.03,
+    relative_fpu=True,
+    jsettlers_jvms=12, target_games=None, paired=True,
 ):
-    """Run Model (native Rust + batched CoreML/CUDA GPU) vs SMART JSettlers."""
+    """Run Model (native Rust + batched CoreML/CUDA GPU) vs SMART JSettlers with pooled JVMs."""
+    from agent_apis.neural.coreml_cohort_pipeline import PooledJavaBridge
+
+    target_games = target_games or len(schedule)
     binary = ensure_binary()
     use_static = (gpu_backend == 'coreml') or cuda_fixed_batch
     eff_dtype = 'float32' if gpu_backend == 'coreml' else dtype
@@ -767,114 +889,143 @@ def run_native_jsettlers_coreml(
         cand_dyn_onnx = None
     frozen_onnx = export_checkpoint(frozen_ref)
     n_workers = min(workers, len(schedule))
+    n_jvms = min(jsettlers_jvms, n_workers)
     bridge = NativeBridgePool(binary, n_workers, gpu_backend, coreml_batch, wait_us, gpu_streams, fixed_batch=fixed_batch)
+    orig_js_bridge = js_player.BRIDGE
+    pooled_js = PooledJavaBridge(n_jvms=n_jvms)
+    js_player.BRIDGE = pooled_js
     results = []
+    state_ctl = {'next_i': 0, 'selected': None}
     res_lock = threading.Lock()
+    stop_event = threading.Event()
 
-    def play_one(item):
-        pair = item['pair']
-        cand_color = Color[item['candidate_color']]
-        opp_color = Color.RED if cand_color == Color.BLUE else Color.BLUE
-        game = benchmark.make_game(pair, friendly_robber=True)
-        codec = Codec(game)
-        meta = job_meta(game)
-        state = list(game.state.random.getstate()[1])
-        colors = [c.value for c in game.state.colors]
-        learner_seat = colors.index(cand_color.value)
-        gid = f'js-{item["index"]:05d}'
-        task = {
-            'job': meta,
-            'start': meta['initial'],
-            'start_rng': state,
-            'logs': [],
-            'id': gid,
-            'prefix': 0,
-            'seat_seeds': [benchmark.named_seed(pair['agent_seed'], c) for c in colors],
-            'rng_state': state,
-        }
-        bridge.call(
-            op='init', game_id=gid, task=task, learner_seat=learner_seat,
-            model=str(cand_onnx),
-            dynamic_model=(str(cand_dyn_onnx) if cand_dyn_onnx is not None else None),
-            frozen=str(frozen_onnx),
-            simulations=simulations, lanes=mcts_lanes, virtual_loss=virtual_loss, eval_mode=True,
-            mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha,
-        )
-        jsettlers = benchmark.Agent('JSETTLERS', opp_color, benchmark.named_seed(pair['agent_seed'], 'JSETTLERS'))
-        started = time.perf_counter()
-        actions = 0
-        try:
-            while game.winning_color() is None and game.state.num_turns < max_turns and actions < max_actions:
-                actor = game.state.current_color()
-                legal = list(game.playable_actions)
-                if len(legal) == 1:
-                    action = legal[0]
-                elif actor == cand_color:
-                    reply = bridge.call(op='choose', game_id=gid)
-                    aid = reply['action_id']
-                    action = next((a for a in legal if action_id(a) == aid), None)
-                    require(action is not None, f'Illegal native CoreML action {aid}')
-                else:
-                    action = jsettlers.select(
-                        game, legal, benchmark.DecisionContext(time.perf_counter(), 500, 'policy', None)
-                    )
-                    jsettlers.cold = False
-                result = game.execute(action)
-                bridge.call(op='step', game_id=gid, action_id=action_id(action), chance=codec.chance(action, result))
-                actions += 1
-        finally:
-            try:
-                bridge.call(op='close', game_id=gid)
-            except Exception:
-                pass
-
-        winner = game.winning_color()
-        res = {
-            'index': item['index'],
-            'pair_id': pair['pair_id'],
-            'candidate_color': cand_color.value,
-            'winner': winner.value if winner is not None else None,
-            'candidate_won': (winner == cand_color) if winner is not None else None,
-            'status': 'completed' if winner is not None else 'cutoff',
-            'turns': game.state.num_turns,
-            'actions': actions,
-            'elapsed_seconds': time.perf_counter() - started,
-        }
+    def next_item():
         with res_lock:
-            results.append(res)
-            done_n = len(results)
-            wins_n = sum(1 for r in results if r['candidate_won'] is True)
-            decided_n = sum(1 for r in results if r['candidate_won'] is not None)
-        outcome = 'WIN' if res['candidate_won'] is True else ('LOSS' if res['candidate_won'] is False else 'CUTOFF')
-        wr = f'{wins_n}/{decided_n} ({100.0*wins_n/decided_n:.1f}%)' if decided_n else '0/0'
-        print(
-            f"  [{done_n:>{len(str(len(schedule)))}}/{len(schedule)}] "
-            f"{res['pair_id']} ({res['candidate_color']}): {outcome} in {res['turns']} turns "
-            f"({res['elapsed_seconds']:.1f}s) | running win rate: {wr}",
-            flush=True,
-        )
+            if stop_event.is_set() or state_ctl['next_i'] >= len(schedule):
+                return None
+            item = schedule[state_ctl['next_i']]
+            state_ctl['next_i'] += 1
+            return item
+
+    def worker_loop():
+        while True:
+            item = next_item()
+            if item is None:
+                return
+            pair = item['pair']
+            cand_color = Color[item['candidate_color']]
+            opp_color = Color.RED if cand_color == Color.BLUE else Color.BLUE
+            game = benchmark.make_game(pair, friendly_robber=True)
+            codec = Codec(game)
+            meta = job_meta(game)
+            state = list(game.state.random.getstate()[1])
+            colors = [c.value for c in game.state.colors]
+            learner_seat = colors.index(cand_color.value)
+            gid = f'js-{item["index"]:05d}'
+            task = {
+                'job': meta,
+                'start': meta['initial'],
+                'start_rng': state,
+                'logs': [],
+                'id': gid,
+                'prefix': 0,
+                'seat_seeds': [benchmark.named_seed(pair['agent_seed'], c) for c in colors],
+                'rng_state': state,
+            }
+            bridge.call(
+                op='init', game_id=gid, task=task, learner_seat=learner_seat,
+                model=str(cand_onnx),
+                dynamic_model=(str(cand_dyn_onnx) if cand_dyn_onnx is not None else None),
+                frozen=str(frozen_onnx),
+                simulations=simulations, lanes=mcts_lanes, virtual_loss=virtual_loss, eval_mode=True,
+                mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha, relative_fpu=relative_fpu,
+            )
+            jsettlers = benchmark.Agent('JSETTLERS', opp_color, benchmark.named_seed(pair['agent_seed'], 'JSETTLERS'))
+            started = time.perf_counter()
+            actions = 0
+            aborted = False
+            try:
+                while game.winning_color() is None and game.state.num_turns < max_turns and actions < max_actions:
+                    if stop_event.is_set():
+                        aborted = True
+                        break
+                    actor = game.state.current_color()
+                    legal = list(game.playable_actions)
+                    if len(legal) == 1:
+                        action = legal[0]
+                    elif actor == cand_color:
+                        reply = bridge.call(op='choose', game_id=gid)
+                        aid = reply['action_id']
+                        action = next((a for a in legal if action_id(a) == aid), None)
+                        require(action is not None, f'Illegal native {gpu_backend} action {aid}')
+                    else:
+                        action = jsettlers.select(
+                            game, legal, benchmark.DecisionContext(time.perf_counter(), 500, 'policy', None)
+                        )
+                        jsettlers.cold = False
+                    result = game.execute(action)
+                    bridge.call(op='step', game_id=gid, action_id=action_id(action), chance=codec.chance(action, result))
+                    actions += 1
+            finally:
+                try:
+                    bridge.call(op='close', game_id=gid)
+                except Exception:
+                    pass
+
+            if aborted:
+                return
+            winner = game.winning_color()
+            res = {
+                'index': item['index'],
+                'pair_idx': item['pair_idx'],
+                'pair_id': pair['pair_id'],
+                'candidate_color': cand_color.value,
+                'winner': winner.value if winner is not None else None,
+                'candidate_won': (winner == cand_color) if winner is not None else None,
+                'status': 'completed' if winner is not None else 'cutoff',
+                'turns': game.state.num_turns,
+                'actions': actions,
+                'elapsed_seconds': time.perf_counter() - started,
+            }
+            with res_lock:
+                if state_ctl['selected'] is not None:
+                    return
+                results.append(res)
+                done_n = len(results)
+                wins_n = sum(1 for r in results if r['candidate_won'] is True)
+                decided_n = sum(1 for r in results if r['candidate_won'] is not None)
+                sel = _select_completed_results(results, target_games, paired)
+                if sel is not None:
+                    state_ctl['selected'] = sel
+                    stop_event.set()
+            outcome = 'WIN' if res['candidate_won'] is True else ('LOSS' if res['candidate_won'] is False else 'CUTOFF')
+            wr = f'{wins_n}/{decided_n} ({100.0*wins_n/decided_n:.1f}%)' if decided_n else '0/0'
+            print(
+                f"  [{done_n:>{len(str(target_games))}}/{target_games}] "
+                f"{res['pair_id']} ({res['candidate_color']}): {outcome} in {res['turns']} turns "
+                f"({res['elapsed_seconds']:.1f}s) | running win rate: {wr}",
+                flush=True,
+            )
 
     try:
         with ThreadPoolExecutor(max_workers=n_workers) as pool:
-            futs = [pool.submit(play_one, item) for item in schedule]
+            futs = [pool.submit(worker_loop) for _ in range(n_workers)]
             for f in futs:
                 f.result()
     finally:
         bridge.close()
-        BRIDGE.close()
+        pooled_js.close()
+        js_player.BRIDGE = orig_js_bridge
 
     pm = bridge.pool_metrics
-    if pm.get('batches'):
-        print(
-            f"CoreML bridge-pool stats: {pm['requests']} evals in {pm['batches']} batches "
-            f"(mean_batch={pm['rows']/pm['batches']:.1f}, forward={pm['forward_seconds']:.1f}s, streams={pm.get('streams', gpu_streams)})",
-            flush=True,
-        )
-    results.sort(key=lambda r: r['index'])
-    return results
+    stats_line = _format_pool_metrics(pm, label=f'{gpu_backend.upper()} bridge-pool')
+    if stats_line:
+        print(stats_line, flush=True)
+    final_results = state_ctl['selected'] if state_ctl['selected'] is not None else sorted(results, key=lambda r: r['index'])[:target_games]
+    return final_results, pm
 
 
-def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, opponent_kind, output_dir):
+def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, opponent_kind, output_dir, pool_metrics=None):
     total = len(results)
     wins = sum(1 for r in results if r['candidate_won'] is True)
     losses = sum(1 for r in results if r['candidate_won'] is False)
@@ -895,11 +1046,13 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
     opp_mcts_opp = getattr(args, 'opponent_mcts_opponent', 'self-policy')
     cand_alpha = getattr(args, 'vp_margin_alpha', 0.03)
     opp_alpha = getattr(args, 'opponent_vp_margin_alpha', cand_alpha)
-    mode_label = 'policy-only' if args.policy_only else f'{args.simulations} simulations ({cand_mcts_opp}, alpha={cand_alpha})'
+    cand_fpu = getattr(args, 'relative_fpu', True)
+    opp_fpu = getattr(args, 'opponent_relative_fpu', cand_fpu)
+    mode_label = 'policy-only' if args.policy_only else f'{args.simulations} simulations ({cand_mcts_opp}, alpha={cand_alpha}, fpu={"rel" if cand_fpu else "flat"})'
     opp_mode_label = (
         'JSettlers'
         if opponent_kind == 'jsettlers'
-        else ('policy-only' if (args.opponent_simulations == 0) else f'{args.opponent_simulations} simulations ({opp_mcts_opp}, alpha={opp_alpha})')
+        else ('policy-only' if (args.opponent_simulations == 0) else f'{args.opponent_simulations} simulations ({opp_mcts_opp}, alpha={opp_alpha}, fpu={"rel" if opp_fpu else "flat"})')
     )
 
     summary = {
@@ -913,10 +1066,15 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
         'opponent_mcts_opponent': opp_mcts_opp,
         'vp_margin_alpha': cand_alpha,
         'opponent_vp_margin_alpha': opp_alpha,
+        'relative_fpu': cand_fpu,
+        'opponent_relative_fpu': opp_fpu,
         'backend': args.backend,
         'gpu_dtype': ('float32' if args.backend in ('cpu', 'coreml') or args.fp32 else 'float16'),
         'batch_size': args.coreml_batch if args.backend in ('coreml', 'cuda') else args.max_batch,
         'fixed_batch': (args.coreml_batch if (args.backend == 'coreml' or (args.backend == 'cuda' and args.cuda_fixed_batch)) else 0),
+        'gpu_streams': args.gpu_streams,
+        'wait_us': args.wait_us,
+        'tail_over_dispatch': args.tail_over_dispatch,
         'workers': args.workers,
         'paired_seats': not args.no_paired,
         'seed': args.seed,
@@ -932,6 +1090,7 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
         'average_turns': avg_turns,
         'elapsed_seconds': elapsed,
         'games_per_minute': (total / elapsed * 60.0) if elapsed > 0 else 0.0,
+        'pool_metrics': pool_metrics or {},
         'per_game': results,
     }
 
@@ -939,20 +1098,25 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
     write(output_dir / 'summary.json', summary)
 
     ci_str = f'[{ci95[0]*100:.1f}%, {ci95[1]*100:.1f}%]' if ci95[0] is not None else 'N/A'
-    md = '\n'.join([
+    pool_line = _format_pool_metrics(pool_metrics, label=f'{args.backend.upper()} batching')
+    md_lines = [
         '# Matchup Benchmark Results',
         '',
         f'- **Candidate**: `{candidate_ref["path"]}` ({mode_label})',
         f'- **Opponent**: `{opp_label}` ({opp_mode_label})',
-        f'- **Games**: {total} ({"paired BLUE/RED" if not args.no_paired else "unpaired"}, seed `{args.seed}`, workers `{args.workers}`, backend `{args.backend}`)',
+        f'- **Games**: {total} ({"paired BLUE/RED" if not args.no_paired else "unpaired"}, seed `{args.seed}`, workers `{args.workers}`, backend `{args.backend}`, over-dispatch `{args.tail_over_dispatch}`)',
         f'- **Elapsed**: {elapsed:.1f}s ({summary["games_per_minute"]:.1f} games/min, avg {avg_turns:.1f} turns/game)',
+    ]
+    if pool_line:
+        md_lines.append(f'- **{pool_line}**')
+    md_lines.extend([
         '',
         '| Wins | Losses | Cutoffs | Win Rate (decided) | 95% Wilson CI | Match Score | As BLUE | As RED |',
         '|---:|---:|---:|---:|---:|---:|---:|---:|',
         f'| {wins} | {losses} | {cutoffs} | **{win_rate*100:.1f}%** | {ci_str} | {match_score*100:.1f}% | {blue_wins}/{len(blue_games)} | {red_wins}/{len(red_games)} |',
         '',
     ])
-    (output_dir / 'REPORT.md').write_text(md)
+    (output_dir / 'REPORT.md').write_text('\n'.join(md_lines))
 
     print('\n=== Matchup Benchmark Summary ===')
     print(f'Candidate : {candidate_ref["path"]} ({mode_label})')
@@ -960,25 +1124,32 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
     print(f'Record    : {wins}W - {losses}L - {cutoffs}C  ({total} games in {elapsed:.1f}s, {summary["games_per_minute"]:.1f} games/min)')
     print(f'Win Rate  : {win_rate*100:.1f}% (95% Wilson CI {ci_str}) | Match Score: {match_score*100:.1f}%')
     print(f'Seat Split: BLUE {blue_wins}/{len(blue_games)} | RED {red_wins}/{len(red_games)} | Avg Turns: {avg_turns:.1f}')
+    if pool_line:
+        print(f'Batching  : {pool_line}')
     print(f'Saved     : {output_dir / "summary.json"} and {output_dir / "REPORT.md"}')
 
 
 def main():
+    auto_backend = default_gpu_backend()
+    if auto_backend == 'cpu-batch':
+        auto_backend = 'cpu'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candidate', type=str, default='cnn', help='Candidate checkpoint path or preset (cnn, transformer, latest-cnn, latest-transformer)')
     parser.add_argument('--opponent', type=str, default='jsettlers', help='"jsettlers", preset (cnn, transformer, latest-cnn, latest-transformer), or checkpoint path')
     parser.add_argument('--games', type=int, default=20, help='Total number of games to play')
-    parser.add_argument('--workers', type=int, default=8, help='Number of parallel workers')
+    parser.add_argument('--workers', type=int, default=None, help='Number of parallel workers (default: 128 on coreml/cuda GPU search, 8 on CPU/policy-only)')
+    parser.add_argument('--jsettlers-jvms', type=int, default=12, help='Number of parallel Java JSettlers Bridge JVMs for GPU vs JSettlers matchups (default: 12)')
+    parser.add_argument('--tail-over-dispatch', type=int, default=32, help='Extra games kept in flight to avoid batch=1 tail stalls; preserves paired BLUE/RED seats (default: 32; 0 disables)')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--policy-only', action='store_true', help='Pure greedy policy (0 MCTS simulations)')
     mode.add_argument('--simulations', '--candidate-simulations', dest='simulations', type=int, default=64, help='MCTS simulation budget per searched decision for the candidate (default: 64)')
     parser.add_argument('--opponent-simulations', type=int, default=None, help='Separate simulation count for the opponent model (default: matches --simulations; 0 = policy-only)')
-    parser.add_argument('--backend', choices=('cpu', 'mps', 'coreml', 'cuda', 'cuda-socket'), default='cpu', help='Inference backend (coreml/mps on macOS; cuda/cuda-socket on NVIDIA GPU)')
+    parser.add_argument('--backend', choices=('cpu', 'mps', 'coreml', 'cuda', 'cuda-socket'), default=auto_backend, help=f'Inference backend (default: auto-detected {auto_backend})')
     parser.add_argument('--max-batch', type=int, default=64)
-    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=32, help='GPU batch size for coreml (static) or cuda (max dynamic, or static with --fixed-batch)')
+    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=64, help='GPU batch size for coreml (static) or cuda (max dynamic, or static with --fixed-batch; default: 64)')
     parser.add_argument('--cuda-fixed-batch', '--fixed-batch', dest='cuda_fixed_batch', action='store_true', help='Use static padded batches for CUDA EP (pairs with --batch-size / --coreml-batch)')
-    parser.add_argument('--wait-us', type=int, default=100)
-    parser.add_argument('--gpu-streams', type=int, default=2)
+    parser.add_argument('--wait-us', type=int, default=None, help='GPU batch coalescing window in microseconds (default: 500 on cuda, 50 on coreml, 100 otherwise)')
+    parser.add_argument('--gpu-streams', type=int, default=None, help='Parallel GPU inference streams (default: 1 on cuda, 4 on coreml, 2 otherwise)')
     parser.add_argument('--mcts-lanes', type=int, default=1)
     parser.add_argument('--virtual-loss', type=float, default=1.0)
     parser.add_argument('--mcts-opponent', choices=('self-policy', 'adversarial-puct', 'frozen-mlp'), default='self-policy', help='Candidate opponent model inside MCTS simulations (default: self-policy)')
@@ -987,6 +1158,8 @@ def main():
     parser.add_argument('--opponent-adversarial-puct', action='store_true', help='Shorthand for --opponent-mcts-opponent adversarial-puct')
     parser.add_argument('--vp-margin-alpha', type=float, default=0.03, help='Candidate weight on (2p-1)^2-gated VP-margin utility in MCTS (default: 0.03; 0.0 disables)')
     parser.add_argument('--opponent-vp-margin-alpha', type=float, default=None, help='Opponent VP-margin alpha in model-vs-model matchups (default: matches --vp-margin-alpha)')
+    parser.add_argument('--relative-fpu', action=argparse.BooleanOptionalAction, default=True, help='Use parent-relative FPU for candidate MCTS (--no-relative-fpu uses flat 0.5 FPU; default: enabled)')
+    parser.add_argument('--opponent-relative-fpu', action=argparse.BooleanOptionalAction, default=None, help='Use parent-relative FPU for opponent MCTS in model-vs-model matchups (default: matches --relative-fpu)')
     parser.add_argument('--python-search', action='store_true', help='Force Python SearchSession instead of the native Rust worker')
     parser.add_argument('--seed', type=int, default=2026111955)
     parser.add_argument('--no-paired', action='store_true', help='Disable paired BLUE/RED seats on identical boards')
@@ -1003,8 +1176,18 @@ def main():
         args.opponent_mcts_opponent = 'adversarial-puct'
     if args.opponent_vp_margin_alpha is None:
         args.opponent_vp_margin_alpha = args.vp_margin_alpha
+    if args.opponent_relative_fpu is None:
+        args.opponent_relative_fpu = args.relative_fpu
+    if args.workers is None:
+        args.workers = 128 if (not args.policy_only and args.backend in ('coreml', 'cuda') and not args.python_search) else 8
+    if args.gpu_streams is None:
+        args.gpu_streams = 1 if args.backend == 'cuda' else (4 if args.backend == 'coreml' else 2)
+    if args.wait_us is None:
+        args.wait_us = 500 if args.backend == 'cuda' else (50 if args.backend == 'coreml' else 100)
 
     require(args.games > 0 and args.workers > 0, '--games and --workers must be positive')
+    require(args.jsettlers_jvms > 0, '--jsettlers-jvms must be positive')
+    require(args.tail_over_dispatch >= 0, '--tail-over-dispatch must be >= 0')
     require(0.0 <= args.vp_margin_alpha <= 0.5, '--vp-margin-alpha must be between 0.0 and 0.5')
     require(0.0 <= args.opponent_vp_margin_alpha <= 0.5, '--opponent-vp-margin-alpha must be between 0.0 and 0.5')
     simulations = 0 if args.policy_only else args.simulations
@@ -1020,25 +1203,41 @@ def main():
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     output_dir = args.output or (ROOT / f'runs/catan-ai/matchup-benchmark/{stamp}')
-    schedule = build_schedule(args.games, args.seed, paired=not args.no_paired)
-
-    opp_sim_label = 'JSettlers (SMART)' if opponent_kind == 'jsettlers' else (
-        f'{opponent_ref["path"]} ({"policy-only" if args.opponent_simulations == 0 else f"{args.opponent_simulations} sims, {args.opponent_mcts_opponent}, alpha={args.opponent_vp_margin_alpha}"})'
+    use_native_gpu = (
+        args.backend in ('coreml', 'cuda')
+        and not args.python_search
+        and simulations > 0
+        and (opponent_kind == 'jsettlers' or args.opponent_simulations > 0)
     )
-    print(f'Candidate: {candidate_ref["path"]} ({"policy-only" if simulations == 0 else f"{simulations} sims, {args.mcts_opponent}, alpha={args.vp_margin_alpha}"})', flush=True)
+    eff_over_dispatch = args.tail_over_dispatch if use_native_gpu else 0
+    schedule = build_overcommit_schedule(args.games, args.seed, paired=not args.no_paired, over_dispatch=eff_over_dispatch)
+
+    cand_fpu_tag = 'rel' if args.relative_fpu else 'flat'
+    opp_fpu_tag = 'rel' if args.opponent_relative_fpu else 'flat'
+    opp_sim_label = 'JSettlers (SMART)' if opponent_kind == 'jsettlers' else (
+        f'{opponent_ref["path"]} ({"policy-only" if args.opponent_simulations == 0 else f"{args.opponent_simulations} sims, {args.opponent_mcts_opponent}, alpha={args.opponent_vp_margin_alpha}, fpu={opp_fpu_tag}"})'
+    )
+    print(f'Candidate: {candidate_ref["path"]} ({"policy-only" if simulations == 0 else f"{simulations} sims, {args.mcts_opponent}, alpha={args.vp_margin_alpha}, fpu={cand_fpu_tag}"})', flush=True)
     print(f'Opponent : {opp_sim_label}', flush=True)
-    print(f'Running {args.games} games with {args.workers} workers (backend={args.backend})...', flush=True)
+    cfg_extra = f', b={args.coreml_batch}, s={args.gpu_streams}, wait_us={args.wait_us}, over_dispatch={eff_over_dispatch}' if use_native_gpu else ''
+    if use_native_gpu and opponent_kind == 'jsettlers':
+        cfg_extra += f', jvms={min(args.jsettlers_jvms, args.workers)}'
+    print(f'Running {args.games} games with {args.workers} workers (backend={args.backend}{cfg_extra})...', flush=True)
 
     started = time.perf_counter()
+    pool_metrics = {}
     with benchmark.exclusive_benchmark():
         if opponent_kind == 'jsettlers' and simulations > 0 and args.backend in ('coreml', 'cuda') and not args.python_search:
-            results = run_native_jsettlers_coreml(
+            results, pool_metrics = run_native_jsettlers_coreml(
                 schedule, candidate_ref, frozen_ref, simulations, args.workers,
                 args.coreml_batch, args.wait_us, args.gpu_streams, args.mcts_lanes,
                 args.virtual_loss, args.max_turns, args.max_actions,
                 gpu_backend=args.backend, mcts_opponent=args.mcts_opponent,
                 dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
                 vp_margin_alpha=args.vp_margin_alpha,
+                relative_fpu=args.relative_fpu,
+                jsettlers_jvms=args.jsettlers_jvms,
+                target_games=args.games, paired=not args.no_paired,
             )
         elif (
             opponent_kind == 'model'
@@ -1046,7 +1245,7 @@ def main():
             and args.opponent_simulations > 0
             and not args.python_search
         ):
-            results = run_native_model_matchup(
+            results, pool_metrics = run_native_model_matchup(
                 schedule, candidate_ref, opponent_ref, frozen_ref, simulations, args.opponent_simulations,
                 args.workers, args.backend, args.max_batch, args.coreml_batch,
                 args.wait_us, args.gpu_streams, args.mcts_lanes,
@@ -1056,6 +1255,10 @@ def main():
                 dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
                 vp_margin_alpha=args.vp_margin_alpha,
                 opp_vp_margin_alpha=args.opponent_vp_margin_alpha,
+                relative_fpu=args.relative_fpu,
+                opp_relative_fpu=args.opponent_relative_fpu,
+                target_games=args.games, paired=not args.no_paired,
+                tail_over_dispatch=eff_over_dispatch,
             )
         else:
             if args.backend in ('cuda', 'cuda-socket') and torch.cuda.is_available():
@@ -1072,9 +1275,11 @@ def main():
                 opp_mcts_opponent=args.opponent_mcts_opponent,
                 vp_margin_alpha=args.vp_margin_alpha,
                 opp_vp_margin_alpha=args.opponent_vp_margin_alpha,
+                relative_fpu=args.relative_fpu,
+                opp_relative_fpu=args.opponent_relative_fpu,
             )
     elapsed = time.perf_counter() - started
-    summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, opponent_kind, output_dir)
+    summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, opponent_kind, output_dir, pool_metrics=pool_metrics)
 
 
 if __name__ == '__main__':

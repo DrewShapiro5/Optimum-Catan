@@ -211,6 +211,10 @@ struct Request {
     #[serde(default)]
     seat_vp_margin_alpha: Option<[f64; 2]>,
     #[serde(default)]
+    relative_fpu: Option<bool>,
+    #[serde(default)]
+    seat_relative_fpu: Option<[bool; 2]>,
+    #[serde(default)]
     dynamic_models: Option<[String; 2]>,
 }
 
@@ -330,6 +334,11 @@ fn parse_seat_opts(r: &Request) -> [Options; 2] {
                 .map(|s| s[i])
                 .or(r.vp_margin_alpha)
                 .unwrap_or(0.03),
+            relative_fpu: r
+                .seat_relative_fpu
+                .map(|s| s[i])
+                .or(r.relative_fpu)
+                .unwrap_or(true),
         }
     })
 }
@@ -437,6 +446,7 @@ fn play(
                 virtual_loss: base_opt.virtual_loss,
                 mcts_opponent: base_opt.mcts_opponent,
                 vp_margin_alpha: base_opt.vp_margin_alpha,
+                relative_fpu: base_opt.relative_fpu,
             };
             let result = tree.run(
                 &enc,
@@ -838,6 +848,7 @@ impl PoolGame {
                 virtual_loss: base_opt.virtual_loss,
                 mcts_opponent: base_opt.mcts_opponent,
                 vp_margin_alpha: base_opt.vp_margin_alpha,
+                relative_fpu: base_opt.relative_fpu,
             };
             let stepper = search::SearchStepper::new(tree, seed, &opt, None, false);
             self.active_decision = Some(ActiveDecision {
@@ -1215,6 +1226,8 @@ struct BridgeCommand {
     #[serde(default)]
     vp_margin_alpha: Option<f64>,
     #[serde(default)]
+    relative_fpu: Option<bool>,
+    #[serde(default)]
     action_id: Option<usize>,
     #[serde(default)]
     chance: Option<i32>,
@@ -1301,6 +1314,7 @@ fn init_bridge_task(
         virtual_loss: g.options.virtual_loss,
         mcts_opponent: g.options.mcts_opponent,
         vp_margin_alpha: g.options.vp_margin_alpha,
+        relative_fpu: g.options.relative_fpu,
     };
     let enc = Encoder::new(Arc::clone(&g.enc.job));
     drop(g);
@@ -1578,6 +1592,7 @@ fn serve_bridge_pool(
                                 MctsOpponent::FrozenMlp
                             }),
                             vp_margin_alpha: cmd.vp_margin_alpha.unwrap_or(0.03),
+                            relative_fpu: cmd.relative_fpu.unwrap_or(true),
                         },
                         setup_simulations: cmd.setup_simulations,
                         setup_temperature: cmd.setup_temperature,

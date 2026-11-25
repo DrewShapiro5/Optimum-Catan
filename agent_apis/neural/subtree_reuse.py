@@ -93,7 +93,7 @@ class ReusableSearch(StochasticSearch):
         start=time.perf_counter()
         fresh=type(self)(view,seed,evaluator,opponent,merged=self.merged,c_puct=self.c_puct,
              max_root_depth=self.max_root_depth,max_actions=self.max_actions,
-             mcts_opponent=self.mcts_opponent,vp_margin_alpha=self.vp_margin_alpha,
+             mcts_opponent=self.mcts_opponent,vp_margin_alpha=self.vp_margin_alpha,relative_fpu=self.relative_fpu,
              session_id=session_id,max_retained_nodes=self.max_retained_nodes,max_retained_states=self.max_retained_states)
         def reset(reason):
             fresh.nodes={};fresh.opponent_nodes={};fresh.opponent_edges={};fresh.positions={};fresh.world_templates={}
@@ -162,13 +162,13 @@ class SearchSession:
     def __init__(self):self.trees=[];self.signature=None;self.lock=threading.RLock()
     def clear(self):
         with self.lock:self.trees=[];self.signature=None
-    def run(self,view,seed,evaluator,opponent,workers,simulations,context,c_puct=1.5,max_actions=128,session_id=None,model_revision=None,adversarial_puct=False,mcts_opponent=None,vp_margin_alpha=0.03):
+    def run(self,view,seed,evaluator,opponent,workers,simulations,context,c_puct=1.5,max_actions=128,session_id=None,model_revision=None,adversarial_puct=False,mcts_opponent=None,vp_margin_alpha=0.03,relative_fpu=True):
         require(type(workers)is int and 1<=workers<=8 and simulations>0,'Invalid search budget')
         validate_rules(view);workers=min(workers,simulations)
         if mcts_opponent is None:
             mcts_opponent='adversarial-puct' if adversarial_puct else 'frozen-mlp'
         with self.lock:
-            signature=(session_id,view['perspective'],id(evaluator),id(opponent),workers,c_puct,max_actions,model_revision,mcts_opponent,float(vp_margin_alpha))
+            signature=(session_id,view['perspective'],id(evaluator),id(opponent),workers,c_puct,max_actions,model_revision,mcts_opponent,float(vp_margin_alpha),bool(relative_fpu))
             previous=self.trees if session_id is not None and signature==self.signature else []
             start=time.perf_counter();policy=BatchedEvaluator(evaluator,workers);enemy=BatchedEvaluator(opponent,workers)
             from agent_apis import debug_telemetry
@@ -182,7 +182,7 @@ class SearchSession:
                                 admission_deadline=min(context.admission_deadline,context.deadline-.050))
                         worker_seed=seed if workers==1 else named_seed(seed,f'root-worker-{i}')
                         tree=(previous[i].advance(view,worker_seed,policy,enemy,session_id) if previous else
-                              ReusableSearch(view,worker_seed,policy,enemy,c_puct=c_puct,max_actions=max_actions,mcts_opponent=mcts_opponent,vp_margin_alpha=vp_margin_alpha,session_id=session_id))
+                              ReusableSearch(view,worker_seed,policy,enemy,c_puct=c_puct,max_actions=max_actions,mcts_opponent=mcts_opponent,vp_margin_alpha=vp_margin_alpha,relative_fpu=relative_fpu,session_id=session_id))
                         if not previous and self.trees:tree.metrics['reuse_reset_reason']='configuration-or-session-changed'
                         result=tree.run(simulations//workers+int(i<simulations%workers),worker_context)
                         return tree,result

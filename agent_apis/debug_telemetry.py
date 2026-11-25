@@ -25,7 +25,7 @@ RESOURCE_KEYS = ("WOOD", "BRICK", "SHEEP", "WHEAT", "ORE")
 class _DebugTracker:
     """Mutable live telemetry state for one in-flight bot decision."""
 
-    def __init__(self, game_id, state_index, color, player_label, dev_cards, resources, legal_actions, simulations=None, can_set_simulations=False, mcts_opponent=None, can_set_mcts_opponent=False):
+    def __init__(self, game_id, state_index, color, player_label, dev_cards, resources, legal_actions, simulations=None, can_set_simulations=False, mcts_opponent=None, can_set_mcts_opponent=False, vp_margin_alpha=None, can_set_vp_margin_alpha=False):
         self.game_id = game_id
         self.state_index = state_index
         self.color = color
@@ -37,6 +37,8 @@ class _DebugTracker:
         self.can_set_simulations = can_set_simulations
         self.mcts_opponent = mcts_opponent
         self.can_set_mcts_opponent = can_set_mcts_opponent
+        self.vp_margin_alpha = vp_margin_alpha
+        self.can_set_vp_margin_alpha = can_set_vp_margin_alpha
         self.last_publish = 0.0
         self.has_published_search = False
 
@@ -110,6 +112,17 @@ def game_mcts_opponent_info(game):
     return None, False
 
 
+def game_vp_margin_alpha_info(game):
+    """Return (current_vp_margin_alpha, can_set_vp_margin_alpha) for searchable bot seats."""
+    current = game.state.current_player()
+    candidates = [current] + [p for p in game.state.players if p is not current]
+    for p in candidates:
+        params = getattr(p, "params", None)
+        if p.is_bot and params is not None and hasattr(params, "vp_margin_alpha"):
+            return float(params.vp_margin_alpha), True
+    return None, False
+
+
 def _uniform_action_entries(legal_actions):
     n = len(legal_actions)
     p = (1.0 / n) if n else 0.0
@@ -136,6 +149,7 @@ def snapshot_from_game(game, status="idle"):
     state_index = len(game.state.action_records)
     sims, can_set_sims = game_simulations_info(game)
     mcts_opp, can_set_opp = game_mcts_opponent_info(game)
+    vp_alpha, can_set_alpha = game_vp_margin_alpha_info(game)
     return {
         "game_id": game.id,
         "state_index": state_index,
@@ -150,6 +164,8 @@ def snapshot_from_game(game, status="idle"):
         "can_set_simulations": can_set_sims,
         "mcts_opponent": mcts_opp,
         "can_set_mcts_opponent": can_set_opp,
+        "vp_margin_alpha": vp_alpha,
+        "can_set_vp_margin_alpha": can_set_alpha,
         "root_value": None,
         "updated_at": time.time(),
         "dev_cards": dev_cards,
@@ -254,6 +270,8 @@ def publish_search_progress(
         "can_set_simulations": tracker.can_set_simulations,
         "mcts_opponent": tracker.mcts_opponent,
         "can_set_mcts_opponent": tracker.can_set_mcts_opponent,
+        "vp_margin_alpha": tracker.vp_margin_alpha,
+        "can_set_vp_margin_alpha": tracker.can_set_vp_margin_alpha,
         "root_value": float(est_value) if est_value is not None else None,
         "updated_at": time.time(),
         "dev_cards": dict(tracker.dev_cards),
@@ -304,6 +322,8 @@ def publish_policy_result(view, probabilities, value, selected_action_json, sess
         "can_set_simulations": tracker.can_set_simulations,
         "mcts_opponent": tracker.mcts_opponent,
         "can_set_mcts_opponent": tracker.can_set_mcts_opponent,
+        "vp_margin_alpha": tracker.vp_margin_alpha,
+        "can_set_vp_margin_alpha": tracker.can_set_vp_margin_alpha,
         "root_value": float(value) if value is not None else None,
         "updated_at": time.time(),
         "dev_cards": dict(tracker.dev_cards),
@@ -326,6 +346,7 @@ def track_decision(game, hold=False):
 
     sims, can_set_sims = game_simulations_info(game)
     mcts_opp, can_set_opp = game_mcts_opponent_info(game)
+    vp_alpha, can_set_alpha = game_vp_margin_alpha_info(game)
     tracker = _DebugTracker(
         game_id=game.id,
         state_index=state_index,
@@ -338,6 +359,8 @@ def track_decision(game, hold=False):
         can_set_simulations=can_set_sims,
         mcts_opponent=mcts_opp,
         can_set_mcts_opponent=can_set_opp,
+        vp_margin_alpha=vp_alpha,
+        can_set_vp_margin_alpha=can_set_alpha,
     )
     initial_snap = {
         "game_id": game.id,
@@ -353,6 +376,8 @@ def track_decision(game, hold=False):
         "can_set_simulations": can_set_sims,
         "mcts_opponent": mcts_opp,
         "can_set_mcts_opponent": can_set_opp,
+        "vp_margin_alpha": vp_alpha,
+        "can_set_vp_margin_alpha": can_set_alpha,
         "root_value": None,
         "updated_at": time.time(),
         "dev_cards": dev_cards,

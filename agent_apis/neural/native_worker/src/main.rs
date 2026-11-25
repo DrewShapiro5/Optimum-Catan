@@ -403,6 +403,7 @@ struct Options {
     lanes: usize,
     virtual_loss: f64,
     mcts_opponent: MctsOpponent,
+    vp_margin_alpha: f64,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = worker::parse_args(std::env::args().skip(1))?;

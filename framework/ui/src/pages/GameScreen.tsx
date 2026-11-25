@@ -267,6 +267,22 @@ export default function GameScreen({ replayMode }: { replayMode: boolean }) {
     },
     [gameId, replayMode],
   );
+  const handleChangeVpMarginAlpha = useCallback(
+    async (alpha: number) => {
+      if (!gameId || replayMode) return;
+      try {
+        const snap = await setDebugSearchSettings(gameId, {
+          vp_margin_alpha: alpha,
+        });
+        if (snap) setDebugSnapshot(snap);
+        preparedStateRef.current = null;
+        setPrepareVersion((v) => v + 1);
+      } catch {
+        setError("Could not update VP-margin alpha.");
+      }
+    },
+    [gameId, replayMode],
+  );
   useEffect(() => {
     if (
       !loaded ||
@@ -585,6 +601,9 @@ export default function GameScreen({ replayMode }: { replayMode: boolean }) {
             onChangeSimulations={(sims) => void handleChangeSimulations(sims)}
             onChangeMctsOpponent={(mode) =>
               void handleChangeMctsOpponent(mode)
+            }
+            onChangeVpMarginAlpha={(alpha) =>
+              void handleChangeVpMarginAlpha(alpha)
             }
             canStep={
               waitBetweenActions &&

@@ -183,6 +183,8 @@ export type DebugSnapshot = {
   can_set_simulations?: boolean;
   mcts_opponent?: MctsOpponentMode | null;
   can_set_mcts_opponent?: boolean;
+  vp_margin_alpha?: number | null;
+  can_set_vp_margin_alpha?: boolean;
   root_value: number | null;
   updated_at: number;
   dev_cards: Record<string, number>;

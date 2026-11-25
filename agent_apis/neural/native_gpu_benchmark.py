@@ -260,7 +260,7 @@ class SocketNativeClient:
             self.process.stdin.close()
         self.log.close()
 
-    def play(self, path, pair, candidate, frozen, candidate_onnx, frozen_onnx, protocol, deadline, lanes=1, virtual_loss=1.0, mcts_opponent='self-policy', setup_simulations=None, tree_agg=None, tree_lock=None):
+    def play(self, path, pair, candidate, frozen, candidate_onnx, frozen_onnx, protocol, deadline, lanes=1, virtual_loss=1.0, mcts_opponent='self-policy', vp_margin_alpha=0.03, setup_simulations=None, tree_agg=None, tree_lock=None):
         validate_protocol(protocol)
         eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
         path = Path(path)
@@ -321,6 +321,7 @@ class SocketNativeClient:
             'lanes': lanes,
             'virtual_loss': virtual_loss,
             'mcts_opponent': mcts_opponent,
+            'vp_margin_alpha': vp_margin_alpha,
         }
         self.process.stdin.write(json.dumps(request, separators=(',', ':'), allow_nan=False) + '\n')
         self.process.stdin.flush()
@@ -423,6 +424,7 @@ def run_timed_mps_socket(
     lanes=1,
     virtual_loss=1.0,
     mcts_opponent='self-policy',
+    vp_margin_alpha=0.03,
     print_games=False,
     setup_simulations=None,
 ):
@@ -473,6 +475,7 @@ def run_timed_mps_socket(
                     lanes=lanes,
                     virtual_loss=virtual_loss,
                     mcts_opponent=mcts_opponent,
+                    vp_margin_alpha=vp_margin_alpha,
                     setup_simulations=setup_simulations,
                     tree_agg=tree_agg,
                     tree_lock=tree_lock,
@@ -535,6 +538,7 @@ def run_timed_inprocess_pool(
     lanes=1,
     virtual_loss=1.0,
     mcts_opponent='self-policy',
+    vp_margin_alpha=0.03,
     print_games=False,
     setup_simulations=None,
     fallback_dynamic_onnx=None,
@@ -639,6 +643,7 @@ def run_timed_inprocess_pool(
             'lanes': lanes,
             'virtual_loss': virtual_loss,
             'mcts_opponent': mcts_opponent,
+            'vp_margin_alpha': vp_margin_alpha,
         }
         if fallback_dynamic_onnx is not None:
             req['dynamic_models'] = [str(fallback_dynamic_onnx), str(fallback_dynamic_onnx)]
@@ -781,6 +786,7 @@ def main():
     parser.add_argument('--virtual-loss', type=float, default=1.0, help='Virtual loss penalty when --mcts-lanes > 1')
     parser.add_argument('--mcts-opponent', choices=('self-policy', 'adversarial-puct', 'frozen-mlp'), default='self-policy', help='Opponent model inside MCTS simulations (default: self-policy)')
     parser.add_argument('--adversarial-puct', action='store_true', help='Shorthand for --mcts-opponent adversarial-puct')
+    parser.add_argument('--vp-margin-alpha', type=float, default=0.03, help='Weight on (2p-1)^2-gated VP-margin utility in MCTS (default: 0.03; 0.0 disables)')
     parser.add_argument('--max-batch', type=int, default=64)
     parser.add_argument('--wait-us', type=int, default=500)
     parser.add_argument('--skip-cpu', action='store_true')
@@ -793,6 +799,7 @@ def main():
     args = parser.parse_args()
     if args.adversarial_puct:
         args.mcts_opponent = 'adversarial-puct'
+    require(0.0 <= args.vp_margin_alpha <= 0.5, '--vp-margin-alpha must be between 0.0 and 0.5')
     if args.checkpoint is None:
         args.checkpoint = DEFAULT_CHECKPOINTS[args.model]
     if args.output is None:
@@ -891,6 +898,7 @@ def main():
                     lanes=args.mcts_lanes,
                     virtual_loss=args.virtual_loss,
                     mcts_opponent=args.mcts_opponent,
+                    vp_margin_alpha=args.vp_margin_alpha,
                     print_games=args.print_games,
                     setup_simulations=args.setup_simulations,
                 )
@@ -930,6 +938,7 @@ def main():
                         lanes=args.mcts_lanes,
                         virtual_loss=args.virtual_loss,
                         mcts_opponent=args.mcts_opponent,
+                        vp_margin_alpha=args.vp_margin_alpha,
                         print_games=args.print_games,
                         setup_simulations=args.setup_simulations,
                     )
@@ -971,6 +980,7 @@ def main():
                     lanes=args.mcts_lanes,
                     virtual_loss=args.virtual_loss,
                     mcts_opponent=args.mcts_opponent,
+                    vp_margin_alpha=args.vp_margin_alpha,
                     print_games=args.print_games,
                     setup_simulations=args.setup_simulations,
                 )
@@ -1014,6 +1024,7 @@ def main():
                         lanes=args.mcts_lanes,
                         virtual_loss=args.virtual_loss,
                         mcts_opponent=args.mcts_opponent,
+                        vp_margin_alpha=args.vp_margin_alpha,
                         print_games=args.print_games,
                         setup_simulations=args.setup_simulations,
                         fallback_dynamic_onnx=cuda_dynamic_onnx,

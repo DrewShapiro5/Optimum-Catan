@@ -168,6 +168,7 @@ export default function DebugWindow({
   onUndoAction,
   onChangeSimulations,
   onChangeMctsOpponent,
+  onChangeVpMarginAlpha,
   canStep,
   stepping,
   canUndo = false,
@@ -184,6 +185,7 @@ export default function DebugWindow({
   onUndoAction?: () => void;
   onChangeSimulations: (sims: number) => void;
   onChangeMctsOpponent?: (mode: MctsOpponentMode) => void;
+  onChangeVpMarginAlpha?: (alpha: number) => void;
   canStep: boolean;
   stepping: boolean;
   canUndo?: boolean;
@@ -194,11 +196,18 @@ export default function DebugWindow({
 }) {
   const [simInput, setSimInput] = useState<string>("");
   const [simDirty, setSimDirty] = useState(false);
+  const [alphaInput, setAlphaInput] = useState<string>("");
+  const [alphaDirty, setAlphaDirty] = useState(false);
   useEffect(() => {
     if (!simDirty && snapshot?.simulations !== undefined && snapshot.simulations !== null) {
       setSimInput(String(snapshot.simulations));
     }
   }, [snapshot?.simulations, simDirty]);
+  useEffect(() => {
+    if (!alphaDirty && snapshot?.vp_margin_alpha !== undefined && snapshot.vp_margin_alpha !== null) {
+      setAlphaInput(String(snapshot.vp_margin_alpha));
+    }
+  }, [snapshot?.vp_margin_alpha, alphaDirty]);
   const applySimulations = () => {
     const parsed = Number(simInput);
     if (!Number.isFinite(parsed)) return;
@@ -206,6 +215,15 @@ export default function DebugWindow({
     setSimInput(String(clamped));
     setSimDirty(false);
     onChangeSimulations(clamped);
+  };
+  const applyVpMarginAlpha = () => {
+    if (!onChangeVpMarginAlpha) return;
+    const parsed = Number(alphaInput);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.max(0, Math.min(0.5, Math.round(parsed * 1000) / 1000));
+    setAlphaInput(String(clamped));
+    setAlphaDirty(false);
+    onChangeVpMarginAlpha(clamped);
   };
   const isLive =
     snapshot?.status === "searching" || snapshot?.status === "awaiting_step";
@@ -375,6 +393,37 @@ export default function DebugWindow({
                   <option value="adversarial-puct">Adversarial PUCT (no-stop)</option>
                   <option value="frozen-mlp">Frozen MLP</option>
                 </select>
+              </div>
+            )}
+            {snapshot?.can_set_vp_margin_alpha && onChangeVpMarginAlpha && (
+              <div className="debug-sims-row">
+                <label htmlFor="debug-alpha-input" title="(2p-1)^2-gated VP-margin utility weight (0 disables)">
+                  VP-margin α
+                </label>
+                <input
+                  id="debug-alpha-input"
+                  type="number"
+                  aria-label="VP-margin alpha"
+                  min={0}
+                  max={0.5}
+                  step={0.01}
+                  value={alphaInput}
+                  onChange={(e) => {
+                    setAlphaInput(e.target.value);
+                    setAlphaDirty(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyVpMarginAlpha();
+                  }}
+                />
+                <button
+                  type="button"
+                  className="debug-sims-apply"
+                  disabled={alphaInput.trim() === "" || stepping || undoing}
+                  onClick={applyVpMarginAlpha}
+                >
+                  Set
+                </button>
               </div>
             )}
           </div>

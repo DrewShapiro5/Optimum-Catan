@@ -123,7 +123,8 @@ class NeuralRuntime:
                     settings.get('workers',1),count,context,settings['c_puct'],settings.get('max_actions',128),
                     session_id=getattr(context,'session_id',None),
                     model_revision=(self.policy.metadata['configuration_sha256'],self.policy.metadata['step'],self.opponent_sha),
-                    mcts_opponent=settings.get('mcts_opponent','frozen-mlp'))
+                    mcts_opponent=settings.get('mcts_opponent','frozen-mlp'),
+                    vp_margin_alpha=settings.get('vp_margin_alpha',0.03))
         elif settings.get('workers',1)>1:
             from agent_apis.neural.parallel_search import parallel_search
             result=parallel_search(view,rng.getrandbits(64),self.policy,self.opponent,
@@ -132,7 +133,8 @@ class NeuralRuntime:
             result=StochasticSearch(view,seed=rng.getrandbits(64),evaluator=self.policy,opponent=self.opponent,
                 c_puct=settings['c_puct'],max_root_depth=None,
                 max_actions=settings.get('max_actions',128),merged=True,
-                mcts_opponent=settings.get('mcts_opponent','frozen-mlp')).run(count,context)
+                mcts_opponent=settings.get('mcts_opponent','frozen-mlp'),
+                vp_margin_alpha=settings.get('vp_margin_alpha',0.03)).run(count,context)
         self.last_search_metrics=result['metrics']
         return result['action']
 

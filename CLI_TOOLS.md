@@ -51,6 +51,7 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--virtual-loss` | `1.0` | Virtual loss penalty applied to in-flight edges when `--mcts-lanes > 1`. |
 | `--mcts-opponent` | `self-policy` | Opponent model inside MCTS simulations: `self-policy` (candidate's own policy, no-stop rollout), `adversarial-puct` (cached-prior no-stop MO-ISMCTS adversarial PUCT using candidate's own policy), or `frozen-mlp` (legacy seed-11 MLP). |
 | `--adversarial-puct` | `false` | Shorthand for `--mcts-opponent adversarial-puct`. |
+| `--vp-margin-alpha` | `0.03` | Weight on the `(2p-1)^2`-gated VP-margin utility blend in MCTS (`0.0` disables; max `0.5`). Zero effect at `p = 0.5`; gently breaks flat-Q ties near 0% and 100% win confidence. |
 | `--wait-us` | `50` | Max batch-coalescing wait window in microseconds. |
 | `--updates` | `2000` | W4 training updates per model per cohort. |
 | `--value-loss-weight` | `0.25` | Training multiplier on value BCE loss (validation stays unweighted `policy_nll + value_bce`). |
@@ -103,6 +104,8 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--opponent-mcts-opponent` | `self-policy` | Opponent model's MCTS opponent in model-vs-model matchups (`self-policy`, `adversarial-puct`, or `frozen-mlp`). |
 | `--adversarial-puct` | `false` | Shorthand for `--mcts-opponent adversarial-puct`. |
 | `--opponent-adversarial-puct` | `false` | Shorthand for `--opponent-mcts-opponent adversarial-puct`. |
+| `--vp-margin-alpha` | `0.03` | Candidate weight on the `(2p-1)^2`-gated VP-margin utility blend in MCTS (`0.0` disables; max `0.5`). |
+| `--opponent-vp-margin-alpha` | Same as `--vp-margin-alpha` | Separate VP-margin alpha for the opponent model in model-vs-model matchups. |
 | `--python-search` | `false` | Force Python `SearchSession` instead of the native Rust worker. |
 | `--seed` | `2026111955` | Base seed for paired boards and agents. |
 | `--no-paired` | `false` | Disable paired BLUE/RED seat swapping on identical boards. |
@@ -153,6 +156,7 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--virtual-loss` | `1.0` | Virtual loss penalty when `--mcts-lanes > 1`. |
 | `--mcts-opponent` | `self-policy` | Opponent model inside MCTS simulations (`self-policy`, `adversarial-puct`, or `frozen-mlp`). |
 | `--adversarial-puct` | `false` | Shorthand for `--mcts-opponent adversarial-puct`. |
+| `--vp-margin-alpha` | `0.03` | Weight on the `(2p-1)^2`-gated VP-margin utility blend in MCTS (`0.0` disables; max `0.5`). |
 | `--max-batch` | `64` | Max batch size for MPS / CUDA socket server. |
 | `--wait-us` | `500` | Batch-coalescing wait window in microseconds. |
 | `--skip-cpu` | `false` | Skip CPU-only baseline runs. |

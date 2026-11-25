@@ -98,15 +98,18 @@ class DecisionNode:
     observation: str
     edges: dict
     visits: int = 0
+    value: float = 0.5
 
 
 class StochasticSearch:
     def __init__(self, view, seed=11, evaluator=None, opponent=None, merged=True,
                  c_puct=1.5, max_root_depth=None, max_actions=128, adversarial_puct=False,
-                 mcts_opponent=None):
+                 mcts_opponent=None, vp_margin_alpha=0.03):
         validate_rules(view)
         require(math.isfinite(c_puct) and c_puct > 0 and (max_root_depth is None or max_root_depth >= 1) and max_actions >= 1,
                 'Invalid search limits or exploration constant')
+        require(math.isfinite(vp_margin_alpha) and 0.0 <= vp_margin_alpha <= 0.5,
+                f'Invalid vp_margin_alpha: {vp_margin_alpha}')
         require(view['perspective'] == view['colors'][view['current_player_index']],
                 'Search must be requested by the decision actor')
         self.view, self.root = policy_observation(view), view['perspective']
@@ -114,6 +117,7 @@ class StochasticSearch:
         self.opponent = opponent or HeuristicOpponent()
         self.merged, self.c_puct = merged,c_puct
         self.max_root_depth, self.max_actions = max_root_depth,max_actions
+        self.vp_margin_alpha = float(vp_margin_alpha)
         if mcts_opponent is None:
             mcts_opponent = 'adversarial-puct' if adversarial_puct else 'frozen-mlp'
         require(mcts_opponent in ('frozen-mlp', 'self-policy', 'adversarial-puct'),
@@ -142,11 +146,37 @@ class StochasticSearch:
         require(abs(sum(priors.values())-1)<1e-8,'Priors require one global legal normalization')
         return priors,root_value(value,view['perspective'],self.root)
 
-    def _node(self,view,key=None):
-        priors,value = self._evaluate(view)
+    def _utility(self, game, p):
+        alpha = self.vp_margin_alpha
+        if alpha <= 0.0:
+            return p
+        own_seat = next(i for i, c in enumerate(game.state.colors) if c.value == self.root)
+        opp_seat = 1 - own_seat
+        own_vp = game.state.player_state[f'P{own_seat}_ACTUAL_VICTORY_POINTS']
+        opp_vp = game.state.player_state[f'P{opp_seat}_ACTUAL_VICTORY_POINTS']
+        margin = 0.5 + 0.5 * math.tanh((own_vp - opp_vp) / 6.0)
+        weight = min(1.0, max(0.0, alpha * (2.0 * p - 1.0) ** 2))
+        return (1.0 - weight) * p + weight * margin
+
+    def _utility_from_view(self, view, p):
+        alpha = self.vp_margin_alpha
+        if alpha <= 0.0:
+            return p
+        ps = view['player_state']
+        own_seat = view['colors'].index(self.root)
+        opp_seat = 1 - own_seat
+        own_vp = ps.get(f'P{own_seat}_ACTUAL_VICTORY_POINTS', ps.get(f'P{own_seat}_VICTORY_POINTS', 0))
+        opp_vp = ps.get(f'P{opp_seat}_ACTUAL_VICTORY_POINTS', ps.get(f'P{opp_seat}_VICTORY_POINTS', 0))
+        margin = 0.5 + 0.5 * math.tanh((own_vp - opp_vp) / 6.0)
+        weight = min(1.0, max(0.0, alpha * (2.0 * p - 1.0) ** 2))
+        return (1.0 - weight) * p + weight * margin
+
+    def _node(self,view,key=None,game=None):
+        priors,raw_value = self._evaluate(view)
+        value = self._utility(game, raw_value) if game is not None else self._utility_from_view(view, raw_value)
         node = DecisionNode(observation_key(view) if key is None else key,{
             action_id(action_from_json(a)):ActionEdge(action_from_json(a),priors[action_id(action_from_json(a))])
-            for a in view['current_playable_actions']})
+            for a in view['current_playable_actions']}, value=value)
         return node,value
 
     def _view(self,game,color):
@@ -185,7 +215,7 @@ class StochasticSearch:
                                                      game.state.num_turns-self.view['num_turns'])
         winner = game.winning_color()
         if winner is not None:
-            return float(winner.value == self.root)
+            return self._utility(game, float(winner.value == self.root))
         if action_depth >= self.max_actions:
             self.metrics['capped_simulations'] += 1
             return .5  # unresolved computation cap, never a training outcome
@@ -193,18 +223,28 @@ class StochasticSearch:
         if actor == self.root:
             view = self._view(game,self.root)
             if self.max_root_depth is not None and root_depth >= self.max_root_depth:
-                return self._evaluate(view)[1]
+                return self._utility(game, self._evaluate(view)[1])
             node = self.nodes.get(path)
             if node is None:
-                node,value = self._node(view,self._view_key(game,self.root))
+                node,value = self._node(view,self._view_key(game,self.root),game=game)
                 self.nodes[path] = node
                 node.visits += 1
                 return value
             require(node.observation == self._view_key(game,self.root), 'Root history aliases distinct observations')
             require(set(node.edges)=={action_id(a) for a in game.playable_actions},
                     'Hidden world changed root legal actions directly')
+            visited_n = 0
+            visited_total = 0.0
+            visited_prior = 0.0
+            for e in node.edges.values():
+                if e.visits > 0:
+                    visited_n += e.visits
+                    visited_total += e.total
+                    visited_prior += e.prior
+            parent_q = (visited_total / visited_n) if visited_n > 0 else node.value
+            fpu = min(1.0, max(0.0, parent_q - 0.20 * math.sqrt(visited_prior)))
             edge = max(node.edges.values(), key=lambda e:(
-                (e.mean if e.visits else .5)+self.c_puct*e.prior*math.sqrt(max(1,node.visits))/(1+e.visits),
+                (e.mean if e.visits else fpu)+self.c_puct*e.prior*math.sqrt(max(1,node.visits))/(1+e.visits),
                 -action_id(e.action)))
             next_root_depth = root_depth+1
         elif self.mcts_opponent == 'adversarial-puct':
@@ -218,7 +258,7 @@ class StochasticSearch:
                 node = self.opponent_nodes.get(path)
                 if node is None:
                     own_view = self._view(game, actor)
-                    node, _ = self._node(own_view, self._view_key(game, actor))
+                    node, _ = self._node(own_view, self._view_key(game, actor), game=game)
                     self.opponent_nodes[path] = node
                 else:
                     missing = [i for i in legal if i not in node.edges]
@@ -228,10 +268,19 @@ class StochasticSearch:
                         for i in missing:
                             node.edges[i] = ActionEdge(legal[i], priors[i])
                 legal_edges = [node.edges[i] for i in legal]
+                visited_n = 0
+                visited_total = 0.0
+                visited_prior = 0.0
                 for e in legal_edges:
                     e.avail += 1
+                    if e.visits > 0:
+                        visited_n += e.visits
+                        visited_total += e.total
+                        visited_prior += e.prior
+                opp_parent_q = (1.0 - visited_total / visited_n) if visited_n > 0 else (1.0 - node.value)
+                fpu_opp = min(1.0, max(0.0, opp_parent_q - 0.20 * math.sqrt(visited_prior)))
                 edge = max(legal_edges, key=lambda e:(
-                    (1.0 - e.mean if e.visits else .5) + self.c_puct * e.prior * math.sqrt(max(1, e.avail)) / (1 + e.visits),
+                    (1.0 - e.mean if e.visits else fpu_opp) + self.c_puct * e.prior * math.sqrt(max(1, e.avail)) / (1 + e.visits),
                     -action_id(e.action)))
                 next_root_depth = root_depth
         elif self.mcts_opponent == 'self-policy':

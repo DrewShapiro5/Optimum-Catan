@@ -207,8 +207,9 @@ def install(app):
         body = request.get_json(silent=True) or {}
         has_sims = "simulations" in body and body["simulations"] is not None
         has_opp = "mcts_opponent" in body and body["mcts_opponent"] is not None
-        if not has_sims and not has_opp:
-            return jsonify(error="Provide 'simulations' and/or 'mcts_opponent'"), 400
+        has_alpha = "vp_margin_alpha" in body and body["vp_margin_alpha"] is not None
+        if not has_sims and not has_opp and not has_alpha:
+            return jsonify(error="Provide 'simulations', 'mcts_opponent', and/or 'vp_margin_alpha'"), 400
 
         sims = None
         if has_sims:
@@ -225,6 +226,15 @@ def install(app):
             if mcts_opp not in ("self-policy", "adversarial-puct", "frozen-mlp"):
                 return jsonify(error="'mcts_opponent' must be 'self-policy', 'adversarial-puct', or 'frozen-mlp'"), 400
 
+        vp_alpha = None
+        if has_alpha:
+            try:
+                vp_alpha = float(body["vp_margin_alpha"])
+            except (TypeError, ValueError):
+                return jsonify(error="'vp_margin_alpha' must be a number between 0.0 and 0.5"), 400
+            if not (0.0 <= vp_alpha <= 0.5):
+                return jsonify(error="'vp_margin_alpha' must be between 0.0 and 0.5"), 400
+
         with debug_telemetry.game_lock(game_id):
             game = get_game_state(game_id)
             if game is None:
@@ -239,6 +249,8 @@ def install(app):
                     patch["simulations"] = sims
                 if mcts_opp is not None and hasattr(params, "mcts_opponent"):
                     patch["mcts_opponent"] = mcts_opp
+                if vp_alpha is not None and hasattr(params, "vp_margin_alpha"):
+                    patch["vp_margin_alpha"] = vp_alpha
                 if patch:
                     player.params = dc_replace(params, **patch)
                     updated += 1
@@ -255,6 +267,7 @@ def install(app):
             debug_telemetry.clear_pending_action(game_id)
             cur_sims, can_sims = debug_telemetry.game_simulations_info(game)
             cur_opp, can_opp = debug_telemetry.game_mcts_opponent_info(game)
+            cur_alpha, can_alpha = debug_telemetry.game_vp_margin_alpha_info(game)
             snap = debug_telemetry.get_snapshot(game_id)
             if snap is not None:
                 with debug_telemetry._LOCK:
@@ -263,6 +276,8 @@ def install(app):
                     snap["can_set_simulations"] = can_sims
                     snap["mcts_opponent"] = cur_opp
                     snap["can_set_mcts_opponent"] = can_opp
+                    snap["vp_margin_alpha"] = cur_alpha
+                    snap["can_set_vp_margin_alpha"] = can_alpha
                     if snap.get("status") == "awaiting_step":
                         snap["status"] = "idle"
                     debug_telemetry._SNAPSHOTS[game_id] = snap

@@ -60,7 +60,7 @@ def latest_v2_transformer_checkpoint():
     return FALLBACK_TRANSFORMER
 
 
-def _build_config(checkpoint_path, model_id='XD-CNN', mcts_opponent='frozen-mlp'):
+def _build_config(checkpoint_path, model_id='XD-CNN', mcts_opponent='frozen-mlp', vp_margin_alpha=0.03):
     frozen = json.loads(FROZEN_CONFIG.read_text())['checkpoint'] if mcts_opponent == 'frozen-mlp' else None
     return {
         'checkpoint': {
@@ -72,6 +72,7 @@ def _build_config(checkpoint_path, model_id='XD-CNN', mcts_opponent='frozen-mlp'
             'chance': 'true-probability-merged',
             'opponent': 'frozen-MLP-D2-W0' if mcts_opponent == 'frozen-mlp' else mcts_opponent,
             'mcts_opponent': mcts_opponent,
+            'vp_margin_alpha': float(vp_margin_alpha),
             'root_selection': ['visits', 'mean_value', 'stable_action_id'],
             'max_root_depth': None,
             'max_actions': 128,
@@ -103,13 +104,15 @@ def _check_latest_availability(ckpt_fn, label, require_frozen=False):
     return True, ''
 
 
-def _choose_latest(observation, ckpt_fn, expected_model_id, simulations=128, mcts_opponent='frozen-mlp'):
+def _choose_latest(observation, ckpt_fn, expected_model_id, simulations=128, mcts_opponent='frozen-mlp', vp_margin_alpha=0.03):
     started = time.perf_counter()
     sims = 128 if simulations is None else int(simulations)
     require(0 <= sims <= 4096, f'simulations must be between 0 and 4096, got {sims}')
+    alpha = 0.03 if vp_margin_alpha is None else float(vp_margin_alpha)
+    require(0.0 <= alpha <= 0.5, f'vp_margin_alpha must be between 0.0 and 0.5, got {alpha}')
     ckpt = ckpt_fn()
     require(ckpt.is_file(), f'Latest {expected_model_id} checkpoint missing: {ckpt}')
-    config = _build_config(ckpt, model_id=expected_model_id, mcts_opponent=mcts_opponent)
+    config = _build_config(ckpt, model_id=expected_model_id, mcts_opponent=mcts_opponent, vp_margin_alpha=alpha)
     ref = config['checkpoint']
     frozen = config['search']['opponent_checkpoint']
     color = observation.get('perspective') or observation['colors'][observation['current_player_index']]
@@ -152,19 +155,21 @@ class LatestCnnSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(latest_cnn_checkpoint, 'CNN')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             latest_cnn_checkpoint,
             'XD-CNN',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -175,6 +180,7 @@ class LatestCnnSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -187,19 +193,21 @@ class LatestTransformerSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(latest_transformer_checkpoint, 'Transformer')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             latest_transformer_checkpoint,
             'TYPED-EXPHORMER',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -210,6 +218,7 @@ class LatestTransformerSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -222,19 +231,21 @@ class BestCnnSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(lambda: BEST_CNN, 'All-time best CNN')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             lambda: BEST_CNN,
             'XD-CNN',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -245,6 +256,7 @@ class BestCnnSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -257,19 +269,21 @@ class BestTransformerSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(lambda: BEST_TRANSFORMER, 'All-time best Transformer')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             lambda: BEST_TRANSFORMER,
             'TYPED-EXPHORMER',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -280,6 +294,7 @@ class BestTransformerSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -292,19 +307,21 @@ class V2BestCnnSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(latest_v2_cnn_checkpoint, 'v2 best CNN')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             latest_v2_cnn_checkpoint,
             'XD-CNN',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -315,6 +332,7 @@ class V2BestCnnSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -327,19 +345,21 @@ class V2BestTransformerSearchPlayer(NeuralPolicyPlayer):
     class Params:
         simulations: int = 128
         mcts_opponent: str = 'self-policy'
+        vp_margin_alpha: float = 0.03
 
     @staticmethod
     def availability():
         return _check_latest_availability(latest_v2_transformer_checkpoint, 'v2 best Transformer')
 
     @classmethod
-    def choose(cls, observation, simulations=128, mcts_opponent='self-policy'):
+    def choose(cls, observation, simulations=128, mcts_opponent='self-policy', vp_margin_alpha=0.03):
         return _choose_latest(
             observation,
             latest_v2_transformer_checkpoint,
             'TYPED-EXPHORMER',
             simulations=simulations,
             mcts_opponent=mcts_opponent,
+            vp_margin_alpha=vp_margin_alpha,
         )
 
     def decide(self, game, playable_actions):
@@ -350,6 +370,7 @@ class V2BestTransformerSearchPlayer(NeuralPolicyPlayer):
                 web_view(game, self.color),
                 simulations=self.params.simulations,
                 mcts_opponent=self.params.mcts_opponent,
+                vp_margin_alpha=self.params.vp_margin_alpha,
             )
         )
 
@@ -407,6 +428,7 @@ def _make_cohort_set_player(cohort_dir: Path, arch: str, model_id: str, label: s
     class _Params:
         simulations: int = 128
         mcts_opponent: str = default_opp
+        vp_margin_alpha: float = 0.03
 
     class _DynamicCohortSearchPlayer(NeuralPolicyPlayer):
         LABEL = label
@@ -418,13 +440,14 @@ def _make_cohort_set_player(cohort_dir: Path, arch: str, model_id: str, label: s
             return _check_latest_availability(_latest_ckpt, label)
 
         @classmethod
-        def choose(cls, observation, simulations=128, mcts_opponent=default_opp):
+        def choose(cls, observation, simulations=128, mcts_opponent=default_opp, vp_margin_alpha=0.03):
             return _choose_latest(
                 observation,
                 _latest_ckpt,
                 model_id,
                 simulations=simulations,
                 mcts_opponent=mcts_opponent,
+                vp_margin_alpha=vp_margin_alpha,
             )
 
         def decide(self, game, playable_actions):
@@ -435,6 +458,7 @@ def _make_cohort_set_player(cohort_dir: Path, arch: str, model_id: str, label: s
                     web_view(game, self.color),
                     simulations=self.params.simulations,
                     mcts_opponent=self.params.mcts_opponent,
+                    vp_margin_alpha=self.params.vp_margin_alpha,
                 )
             )
 

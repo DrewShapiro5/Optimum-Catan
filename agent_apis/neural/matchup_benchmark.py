@@ -194,7 +194,7 @@ def _py_worker_init(candidate_path, opponent_path, frozen_path, device):
     _WORKER_STATE['frozen'] = None if frozen_path is None else EvalModel(frozen_path, device='cpu')
 
 
-def _choose_search(model, frozen, game, color, simulations, search_session, rng, mcts_opponent='self-policy'):
+def _choose_search(model, frozen, game, color, simulations, search_session, rng, mcts_opponent='self-policy', vp_margin_alpha=0.03):
     from agent_apis.neural.subtree_reuse import SearchSession
     legal = list(game.playable_actions)
     if len(legal) == 1:
@@ -214,12 +214,14 @@ def _choose_search(model, frozen, game, color, simulations, search_session, rng,
         session_id=f'{game.id}:{color.value}',
         model_revision=(str(model.path), 0, str(frozen.path)),
         mcts_opponent=mcts_opponent,
+        vp_margin_alpha=vp_margin_alpha,
     )
     return action_from_json(result['action'])
 
 
 def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
-                 mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                 mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
+                 vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
     from agent_apis.neural.subtree_reuse import SearchSession
 
     pair = item['pair']
@@ -254,7 +256,7 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
                 else:
                     action = _choose_search(
                         cand_model, frozen, game, cand_color, simulations, cand_session, cand_rng,
-                        mcts_opponent=mcts_opponent,
+                        mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha,
                     )
             else:
                 if opponent_kind == 'jsettlers':
@@ -267,7 +269,7 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
                 else:
                     action = _choose_search(
                         opp_model, frozen, game, opp_color, opp_simulations, opp_session, opp_rng,
-                        mcts_opponent=opp_mcts_opponent,
+                        mcts_opponent=opp_mcts_opponent, vp_margin_alpha=opp_vp_margin_alpha,
                     )
             game.execute(action)
             actions += 1
@@ -292,7 +294,8 @@ def _py_play_one(item, opponent_kind, simulations, opp_simulations, max_turns, m
 
 def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, frozen_ref,
                        simulations, opp_simulations, workers, device, max_turns, max_actions,
-                       mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                       mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
+                       vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
     cand_path = str(ROOT / candidate_ref['path'])
     opp_path = None if opponent_kind == 'jsettlers' else str(ROOT / opponent_ref['path'])
     froz_path = None if (simulations == 0 and (opponent_kind == 'jsettlers' or opp_simulations == 0)) else str(ROOT / frozen_ref['path'])
@@ -313,7 +316,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
         for item in schedule:
             _record(_py_play_one(
                 item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
-                mcts_opponent, opp_mcts_opponent,
+                mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
             ))
     else:
         try:
@@ -327,7 +330,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
                 futs = [
                     pool.submit(
                         _py_play_one, item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
-                        mcts_opponent, opp_mcts_opponent,
+                        mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
                     )
                     for item in schedule
                 ]
@@ -338,7 +341,7 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
             for item in schedule:
                 _record(_py_play_one(
                     item, opponent_kind, simulations, opp_simulations, max_turns, max_actions,
-                    mcts_opponent, opp_mcts_opponent,
+                    mcts_opponent, opp_mcts_opponent, vp_margin_alpha, opp_vp_margin_alpha,
                 ))
     results.sort(key=lambda r: r['index'])
     return results
@@ -351,7 +354,8 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
 def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations=None,
                          model_ids=None, lanes=1, virtual_loss=1.0, max_turns=1000, max_actions=10000,
                          mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                         cand_dyn_onnx=None, opp_dyn_onnx=None):
+                         cand_dyn_onnx=None, opp_dyn_onnx=None,
+                         vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
     if opp_simulations is None:
         opp_simulations = simulations
     pair = item['pair']
@@ -364,6 +368,7 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
     mids = None if model_ids is None else [model_ids[0] if c == cand_color else model_ids[1] for c in colors]
     seat_sims = [simulations if c == cand_color else opp_simulations for c in colors]
     seat_opp = [mcts_opponent if c == cand_color else opp_mcts_opponent for c in colors]
+    seat_alpha = [vp_margin_alpha if c == cand_color else opp_vp_margin_alpha for c in colors]
     task = {
         'job': meta,
         'start': meta['initial'],
@@ -390,11 +395,14 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         'virtual_loss': virtual_loss,
         'eval_mode': True,
         'mcts_opponent': mcts_opponent,
+        'vp_margin_alpha': vp_margin_alpha,
     }
     if simulations != opp_simulations:
         req['seat_simulations'] = seat_sims
     if mcts_opponent != opp_mcts_opponent:
         req['seat_mcts_opponent'] = seat_opp
+    if vp_margin_alpha != opp_vp_margin_alpha:
+        req['seat_vp_margin_alpha'] = seat_alpha
     if mids is not None:
         req['model_ids'] = mids
     if cand_dyn_onnx is not None and opp_dyn_onnx is not None:
@@ -406,7 +414,8 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
                              workers, backend, max_batch, coreml_batch, wait_us, gpu_streams,
                              mcts_lanes, virtual_loss, max_turns, max_actions,
                              mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                             dtype='float16', cuda_fixed_batch=False):
+                             dtype='float16', cuda_fixed_batch=False,
+                             vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
     binary = ensure_binary()
     frozen_onnx = export_checkpoint(frozen_ref)
     same_model = candidate_ref['sha256'] == opponent_ref['sha256']
@@ -434,6 +443,7 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss, max_turns, max_actions,
             gpu_backend=backend, mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
             fixed_batch=eff_fixed, cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
+            vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
         )
 
     cand_onnx = export_checkpoint(candidate_ref)
@@ -488,6 +498,7 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
                         model_ids=model_ids, lanes=mcts_lanes, virtual_loss=virtual_loss,
                         max_turns=max_turns, max_actions=max_actions,
                         mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
+                        vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
                     )
                     proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
                     proc.stdin.flush()
@@ -551,7 +562,8 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
                             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes,
                             virtual_loss, max_turns, max_actions,
                             gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                            fixed_batch=None, cand_dyn_onnx=None, opp_dyn_onnx=None):
+                            fixed_batch=None, cand_dyn_onnx=None, opp_dyn_onnx=None,
+                            vp_margin_alpha=0.03, opp_vp_margin_alpha=0.03):
     n_workers = min(workers, len(schedule))
     if fixed_batch is None:
         fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
@@ -579,6 +591,7 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
             lanes=mcts_lanes, virtual_loss=virtual_loss, max_turns=max_turns, max_actions=max_actions,
             mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
             cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
+            vp_margin_alpha=vp_margin_alpha, opp_vp_margin_alpha=opp_vp_margin_alpha,
         )
         meta_by_gid[req['game_id']] = (item, colors)
         proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
@@ -714,6 +727,7 @@ def run_native_jsettlers_coreml(
     coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss,
     max_turns, max_actions, gpu_backend='coreml', mcts_opponent='self-policy',
     dtype='float16', cuda_fixed_batch=False,
+    vp_margin_alpha=0.03,
 ):
     """Run Model (native Rust + batched CoreML/CUDA GPU) vs SMART JSettlers."""
     binary = ensure_binary()
@@ -759,7 +773,7 @@ def run_native_jsettlers_coreml(
             dynamic_model=(str(cand_dyn_onnx) if cand_dyn_onnx is not None else None),
             frozen=str(frozen_onnx),
             simulations=simulations, lanes=mcts_lanes, virtual_loss=virtual_loss, eval_mode=True,
-            mcts_opponent=mcts_opponent,
+            mcts_opponent=mcts_opponent, vp_margin_alpha=vp_margin_alpha,
         )
         jsettlers = benchmark.Agent('JSETTLERS', opp_color, benchmark.named_seed(pair['agent_seed'], 'JSETTLERS'))
         started = time.perf_counter()
@@ -854,11 +868,13 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
     opp_label = 'JSettlers (SMART)' if opponent_kind == 'jsettlers' else opponent_ref['path']
     cand_mcts_opp = getattr(args, 'mcts_opponent', 'self-policy')
     opp_mcts_opp = getattr(args, 'opponent_mcts_opponent', 'self-policy')
-    mode_label = 'policy-only' if args.policy_only else f'{args.simulations} simulations ({cand_mcts_opp})'
+    cand_alpha = getattr(args, 'vp_margin_alpha', 0.03)
+    opp_alpha = getattr(args, 'opponent_vp_margin_alpha', cand_alpha)
+    mode_label = 'policy-only' if args.policy_only else f'{args.simulations} simulations ({cand_mcts_opp}, alpha={cand_alpha})'
     opp_mode_label = (
         'JSettlers'
         if opponent_kind == 'jsettlers'
-        else ('policy-only' if (args.opponent_simulations == 0) else f'{args.opponent_simulations} simulations ({opp_mcts_opp})')
+        else ('policy-only' if (args.opponent_simulations == 0) else f'{args.opponent_simulations} simulations ({opp_mcts_opp}, alpha={opp_alpha})')
     )
 
     summary = {
@@ -870,6 +886,8 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
         'opponent_mode': opp_mode_label,
         'mcts_opponent': cand_mcts_opp,
         'opponent_mcts_opponent': opp_mcts_opp,
+        'vp_margin_alpha': cand_alpha,
+        'opponent_vp_margin_alpha': opp_alpha,
         'backend': args.backend,
         'gpu_dtype': ('float32' if args.backend in ('cpu', 'coreml') or args.fp32 else 'float16'),
         'batch_size': args.coreml_batch if args.backend in ('coreml', 'cuda') else args.max_batch,
@@ -942,6 +960,8 @@ def main():
     parser.add_argument('--opponent-mcts-opponent', choices=('self-policy', 'adversarial-puct', 'frozen-mlp'), default='self-policy', help='Opponent model MCTS opponent in model-vs-model matchups (default: self-policy)')
     parser.add_argument('--adversarial-puct', action='store_true', help='Shorthand for --mcts-opponent adversarial-puct')
     parser.add_argument('--opponent-adversarial-puct', action='store_true', help='Shorthand for --opponent-mcts-opponent adversarial-puct')
+    parser.add_argument('--vp-margin-alpha', type=float, default=0.03, help='Candidate weight on (2p-1)^2-gated VP-margin utility in MCTS (default: 0.03; 0.0 disables)')
+    parser.add_argument('--opponent-vp-margin-alpha', type=float, default=None, help='Opponent VP-margin alpha in model-vs-model matchups (default: matches --vp-margin-alpha)')
     parser.add_argument('--python-search', action='store_true', help='Force Python SearchSession instead of the native Rust worker')
     parser.add_argument('--seed', type=int, default=2026111955)
     parser.add_argument('--no-paired', action='store_true', help='Disable paired BLUE/RED seats on identical boards')
@@ -956,8 +976,12 @@ def main():
         args.mcts_opponent = 'adversarial-puct'
     if args.opponent_adversarial_puct:
         args.opponent_mcts_opponent = 'adversarial-puct'
+    if args.opponent_vp_margin_alpha is None:
+        args.opponent_vp_margin_alpha = args.vp_margin_alpha
 
     require(args.games > 0 and args.workers > 0, '--games and --workers must be positive')
+    require(0.0 <= args.vp_margin_alpha <= 0.5, '--vp-margin-alpha must be between 0.0 and 0.5')
+    require(0.0 <= args.opponent_vp_margin_alpha <= 0.5, '--opponent-vp-margin-alpha must be between 0.0 and 0.5')
     simulations = 0 if args.policy_only else args.simulations
     require(simulations >= 0, '--simulations must be >= 0')
     if args.opponent_simulations is None:
@@ -974,9 +998,9 @@ def main():
     schedule = build_schedule(args.games, args.seed, paired=not args.no_paired)
 
     opp_sim_label = 'JSettlers (SMART)' if opponent_kind == 'jsettlers' else (
-        f'{opponent_ref["path"]} ({"policy-only" if args.opponent_simulations == 0 else f"{args.opponent_simulations} sims, {args.opponent_mcts_opponent}"})'
+        f'{opponent_ref["path"]} ({"policy-only" if args.opponent_simulations == 0 else f"{args.opponent_simulations} sims, {args.opponent_mcts_opponent}, alpha={args.opponent_vp_margin_alpha}"})'
     )
-    print(f'Candidate: {candidate_ref["path"]} ({"policy-only" if simulations == 0 else f"{simulations} sims, {args.mcts_opponent}"})', flush=True)
+    print(f'Candidate: {candidate_ref["path"]} ({"policy-only" if simulations == 0 else f"{simulations} sims, {args.mcts_opponent}, alpha={args.vp_margin_alpha}"})', flush=True)
     print(f'Opponent : {opp_sim_label}', flush=True)
     print(f'Running {args.games} games with {args.workers} workers (backend={args.backend})...', flush=True)
 
@@ -989,6 +1013,7 @@ def main():
                 args.virtual_loss, args.max_turns, args.max_actions,
                 gpu_backend=args.backend, mcts_opponent=args.mcts_opponent,
                 dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
+                vp_margin_alpha=args.vp_margin_alpha,
             )
         elif (
             opponent_kind == 'model'
@@ -1004,6 +1029,8 @@ def main():
                 mcts_opponent=args.mcts_opponent,
                 opp_mcts_opponent=args.opponent_mcts_opponent,
                 dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
+                vp_margin_alpha=args.vp_margin_alpha,
+                opp_vp_margin_alpha=args.opponent_vp_margin_alpha,
             )
         else:
             if args.backend in ('cuda', 'cuda-socket') and torch.cuda.is_available():
@@ -1018,6 +1045,8 @@ def main():
                 args.max_turns, args.max_actions,
                 mcts_opponent=args.mcts_opponent,
                 opp_mcts_opponent=args.opponent_mcts_opponent,
+                vp_margin_alpha=args.vp_margin_alpha,
+                opp_vp_margin_alpha=args.opponent_vp_margin_alpha,
             )
     elapsed = time.perf_counter() - started
     summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, opponent_kind, output_dir)

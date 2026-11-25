@@ -221,6 +221,7 @@ export async function setDebugSearchSettings(
   settings: {
     simulations?: number;
     mcts_opponent?: "self-policy" | "adversarial-puct" | "frozen-mlp";
+    vp_margin_alpha?: number;
   },
 ): Promise<DebugSnapshot> {
   const response = await axios.post<DebugSnapshot>(

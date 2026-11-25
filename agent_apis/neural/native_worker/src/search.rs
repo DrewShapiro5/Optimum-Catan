@@ -38,6 +38,7 @@ struct Node {
     obs: Key,
     n: usize,
     vl_n: usize,
+    value: f64,
     edges: Vec<usize>,
 }
 impl Edge {
@@ -224,13 +225,31 @@ impl Search {
         });
         i
     }
-    fn expand_node(&mut self, w: &World, enc: &Encoder, pred: Vec<(Act, usize, f64)>) -> usize {
+    fn utility(w: &World, own: usize, p: f64, vp_margin_alpha: f64) -> f64 {
+        if vp_margin_alpha <= 0.0 {
+            return p;
+        }
+        let own_vp = w.e.state.players[own].actual as f64;
+        let opp_vp = w.e.state.players[1 - own].actual as f64;
+        let margin = 0.5 + 0.5 * ((own_vp - opp_vp) / 6.0).tanh();
+        let sat = (2.0 * p - 1.0).powi(2);
+        let weight = (vp_margin_alpha * sat).clamp(0.0, 1.0);
+        (1.0 - weight) * p + weight * margin
+    }
+    fn expand_node(
+        &mut self,
+        w: &World,
+        enc: &Encoder,
+        pred: Vec<(Act, usize, f64)>,
+        value: f64,
+    ) -> usize {
         let edges = pred.into_iter().map(|(a, _, p)| self.edge(a, p)).collect();
         let i = self.nodes.len();
         self.nodes.push(Node {
             obs: w.key(enc, self.own),
             n: 0,
             vl_n: 0,
+            value,
             edges,
         });
         i
@@ -241,18 +260,35 @@ impl Search {
         } else {
             self.nodes[ni].n.max(1) as f64
         };
+        let mut visited_n = 0usize;
+        let mut visited_total = 0.0f64;
+        let mut visited_prior = 0.0f64;
+        for &i in &self.nodes[ni].edges {
+            let e = &self.edges[i];
+            if e.n > 0 {
+                visited_n += e.n;
+                visited_total += e.total;
+                visited_prior += e.prior;
+            }
+        }
+        let parent_q = if visited_n > 0 {
+            visited_total / visited_n as f64
+        } else {
+            self.nodes[ni].value
+        };
+        let fpu = (parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0);
         let score = |i: usize| {
             let e = &self.edges[i];
             if use_vl {
                 let n_eff = e.n + e.vl_n;
                 let q = if n_eff == 0 {
-                    0.5
+                    fpu
                 } else {
                     (e.total - e.vl_loss) / n_eff as f64
                 };
                 q + 1.5 * e.prior * parent_n.sqrt() / (1 + n_eff) as f64
             } else {
-                (if e.n == 0 { 0.5 } else { e.mean() })
+                (if e.n == 0 { fpu } else { e.mean() })
                     + 1.5 * e.prior * parent_n.sqrt() / (1 + e.n) as f64
             }
         };
@@ -274,12 +310,27 @@ impl Search {
             .copied()
             .filter(|&i| w.e.actions.contains(&self.edges[i].a))
             .collect();
+        let mut visited_n = 0usize;
+        let mut visited_total = 0.0f64;
+        let mut visited_prior = 0.0f64;
         for &i in &legal_edges {
             self.edges[i].avail += 1;
+            let e = &self.edges[i];
+            if e.n > 0 {
+                visited_n += e.n;
+                visited_total += e.total;
+                visited_prior += e.prior;
+            }
         }
+        let opp_parent_q = if visited_n > 0 {
+            1.0 - visited_total / visited_n as f64
+        } else {
+            1.0 - self.nodes[ni].value
+        };
+        let fpu_opp = (opp_parent_q - 0.20 * visited_prior.sqrt()).clamp(0.0, 1.0);
         let score = |i: usize| {
             let e = &self.edges[i];
-            let q_opp = if e.n == 0 { 0.5 } else { 1.0 - e.mean() };
+            let q_opp = if e.n == 0 { fpu_opp } else { 1.0 - e.mean() };
             q_opp + 1.5 * e.prior * (e.avail.max(1) as f64).sqrt() / (1 + e.n) as f64
         };
         *legal_edges
@@ -1031,7 +1082,8 @@ impl SearchStepper {
                 .max(st.w.e.state.turns - self.search.root.e.state.turns);
             let winner = st.w.e.winner();
             if winner >= 0 {
-                let v = (winner as usize == self.search.own) as u8 as f64;
+                let raw = (winner as usize == self.search.own) as u8 as f64;
+                let v = Search::utility(&st.w, self.search.own, raw, self.o.vp_margin_alpha);
                 self.search.backup_trace(&st.trace, v, self.o.virtual_loss, use_vl);
                 return Ok(DescendOutcome::Finished);
             }
@@ -1210,8 +1262,9 @@ impl SearchStepper {
                 }
                 StepperPhase::WaitRootNode => {
                     let (scores, raw_val) = Self::take_one(reply.take())?;
-                    let (pred, _) = self.search.process_prediction(&self.root, enc, scores, raw_val)?;
-                    let ni = self.search.expand_node(&self.root, enc, pred);
+                    let (pred, raw_v) = self.search.process_prediction(&self.root, enc, scores, raw_val)?;
+                    let v = Search::utility(&self.root, self.search.own, raw_v, self.o.vp_margin_alpha);
+                    let ni = self.search.expand_node(&self.root, enc, pred, v);
                     self.search.paths.insert(vec![], ni);
                     return Ok(self.emit_root_priors(enc));
                 }
@@ -1325,8 +1378,9 @@ impl SearchStepper {
                     trace,
                 } => {
                     let (scores, raw_val) = Self::take_one(reply.take())?;
-                    let (pred, v) = self.search.process_prediction(&w, enc, scores, raw_val)?;
-                    let ni = self.search.expand_node(&w, enc, pred);
+                    let (pred, raw_v) = self.search.process_prediction(&w, enc, scores, raw_val)?;
+                    let v = Search::utility(&w, self.search.own, raw_v, self.o.vp_margin_alpha);
+                    let ni = self.search.expand_node(&w, enc, pred, v);
                     self.search.paths.insert(path, ni);
                     self.search.nodes[ni].n += 1;
                     self.search.backup_trace(&trace, v, 0.0, false);
@@ -1342,7 +1396,8 @@ impl SearchStepper {
                     existing_ni,
                 } => {
                     let (scores, raw_val) = Self::take_one(reply.take())?;
-                    let (pred, _) = self.search.process_prediction(&state.w, enc, scores, raw_val)?;
+                    let (pred, raw_v) = self.search.process_prediction(&state.w, enc, scores, raw_val)?;
+                    let v = Search::utility(&state.w, self.search.own, raw_v, self.o.vp_margin_alpha);
                     let ni = if let Some(ni) = existing_ni {
                         let existing_acts: Vec<Act> = self.search.nodes[ni]
                             .edges
@@ -1357,7 +1412,7 @@ impl SearchStepper {
                         }
                         ni
                     } else {
-                        let ni = self.search.expand_node(&state.w, enc, pred);
+                        let ni = self.search.expand_node(&state.w, enc, pred, v);
                         self.search.op_paths.insert(state.path.clone(), ni);
                         ni
                     };
@@ -1448,11 +1503,12 @@ impl SearchStepper {
                     for ((lw, path, trace), (scores, raw_val)) in
                         pending.into_iter().zip(outputs.into_iter())
                     {
-                        let (pred, v) = self.search.process_prediction(&lw, enc, scores, raw_val)?;
+                        let (pred, raw_v) = self.search.process_prediction(&lw, enc, scores, raw_val)?;
+                        let v = Search::utility(&lw, self.search.own, raw_v, self.o.vp_margin_alpha);
                         if let Some(&existing_ni) = self.search.paths.get(&path) {
                             self.search.nodes[existing_ni].n += 1;
                         } else {
-                            let new_ni = self.search.expand_node(&lw, enc, pred);
+                            let new_ni = self.search.expand_node(&lw, enc, pred, v);
                             self.search.nodes[new_ni].n = 1;
                             self.search.paths.insert(path, new_ni);
                         }

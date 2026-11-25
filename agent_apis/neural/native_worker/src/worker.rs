@@ -207,6 +207,10 @@ struct Request {
     #[serde(default)]
     setup_temperature: Option<f64>,
     #[serde(default)]
+    vp_margin_alpha: Option<f64>,
+    #[serde(default)]
+    seat_vp_margin_alpha: Option<[f64; 2]>,
+    #[serde(default)]
     dynamic_models: Option<[String; 2]>,
 }
 
@@ -320,6 +324,11 @@ fn parse_seat_opts(r: &Request) -> [Options; 2] {
             lanes: r.lanes.unwrap_or(1).max(1),
             virtual_loss: r.virtual_loss.unwrap_or(1.0),
             mcts_opponent,
+            vp_margin_alpha: r
+                .seat_vp_margin_alpha
+                .map(|s| s[i])
+                .or(r.vp_margin_alpha)
+                .unwrap_or(0.03),
         }
     })
 }
@@ -330,6 +339,14 @@ fn validate_request(r: &Request) -> Result<(), String> {
         || r.simulations == Some(0)
         || r.setup_simulations == Some(0)
         || r.setup_temperature.is_some_and(|t| !t.is_finite() || t <= 0.)
+        || r.vp_margin_alpha
+            .is_some_and(|a| !a.is_finite() || !(0.0..=0.5).contains(&a))
+        || r.seat_vp_margin_alpha.is_some_and(|s| {
+            !s[0].is_finite()
+                || !s[1].is_finite()
+                || !(0.0..=0.5).contains(&s[0])
+                || !(0.0..=0.5).contains(&s[1])
+        })
         || r.seat_simulations.is_some_and(|s| s[0] == 0 || s[1] == 0 || r.seconds.is_some())
         || r.seconds.is_some_and(|s| !s.is_finite() || s <= 0.)
         || r.max_turns == 0
@@ -418,6 +435,7 @@ fn play(
                 lanes: base_opt.lanes,
                 virtual_loss: base_opt.virtual_loss,
                 mcts_opponent: base_opt.mcts_opponent,
+                vp_margin_alpha: base_opt.vp_margin_alpha,
             };
             let result = tree.run(
                 &enc,
@@ -818,6 +836,7 @@ impl PoolGame {
                 lanes: base_opt.lanes,
                 virtual_loss: base_opt.virtual_loss,
                 mcts_opponent: base_opt.mcts_opponent,
+                vp_margin_alpha: base_opt.vp_margin_alpha,
             };
             let stepper = search::SearchStepper::new(tree, seed, &opt, None, false);
             self.active_decision = Some(ActiveDecision {
@@ -1109,6 +1128,8 @@ struct BridgeCommand {
     #[serde(default)]
     setup_temperature: Option<f64>,
     #[serde(default)]
+    vp_margin_alpha: Option<f64>,
+    #[serde(default)]
     action_id: Option<usize>,
     #[serde(default)]
     chance: Option<i32>,
@@ -1194,6 +1215,7 @@ fn init_bridge_task(
         lanes: g.options.lanes,
         virtual_loss: g.options.virtual_loss,
         mcts_opponent: g.options.mcts_opponent,
+        vp_margin_alpha: g.options.vp_margin_alpha,
     };
     let enc = Encoder::new(Arc::clone(&g.enc.job));
     drop(g);
@@ -1430,6 +1452,12 @@ fn serve_bridge_pool(
                     if cmd.setup_temperature.is_some_and(|t| !t.is_finite() || t <= 0.) {
                         return Err("setup_temperature must be finite and > 0".into());
                     }
+                    if cmd
+                        .vp_margin_alpha
+                        .is_some_and(|a| !a.is_finite() || !(0.0..=0.5).contains(&a))
+                    {
+                        return Err("vp_margin_alpha must be finite and between 0.0 and 0.5".into());
+                    }
                     let enc = Encoder::new(Arc::new(t.job.clone()));
                     let world = Arc::new(task_world(&t));
                     let game = BridgeGame {
@@ -1453,6 +1481,7 @@ fn serve_bridge_pool(
                             } else {
                                 MctsOpponent::FrozenMlp
                             }),
+                            vp_margin_alpha: cmd.vp_margin_alpha.unwrap_or(0.03),
                         },
                         setup_simulations: cmd.setup_simulations,
                         setup_temperature: cmd.setup_temperature,

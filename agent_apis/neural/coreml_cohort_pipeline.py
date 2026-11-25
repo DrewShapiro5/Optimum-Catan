@@ -56,6 +56,7 @@ from agent_apis.neural.native_assets import (
     NATIVE,
     ensure_binary,
     export_checkpoint,
+    resolve_frozen_opponent,
     runtime_environment,
 )
 from agent_apis.neural.native_codec import Codec, job_meta
@@ -245,6 +246,7 @@ def collect_neural_block(
     setup_exploration_games=0,
     setup_temperature=1.5,
     print_games=False,
+    fixed_batch=None,
 ):
     """Collect `target_games` completed games using native Rust GPU --pool."""
     block_dir.mkdir(parents=True, exist_ok=True)
@@ -256,10 +258,11 @@ def collect_neural_block(
     eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
     remaining_needed = target_games - len(completed)
     n_workers = min(workers, remaining_needed)
-    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
+    if fixed_batch is None:
+        fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     print(
         f'\n[{block_name}] Collecting {remaining_needed} completed games '
-        f'(backend={gpu_backend}, w={n_workers}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
+        f'(backend={gpu_backend}, w={n_workers}, b={coreml_batch}, fixed_b={fixed_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
         f'setup_sims={eff_setup_sims}, setup_explore={setup_exploration_games}@T={setup_temperature})...',
         flush=True,
     )
@@ -438,6 +441,7 @@ def collect_jsettlers_block(
     setup_exploration_games=0,
     setup_temperature=1.5,
     print_games=False,
+    fixed_batch=None,
 ):
     """Collect `target_games` completed JSettlers vs Model games via native GPU --bridge-pool + pooled JVMs."""
     block_dir.mkdir(parents=True, exist_ok=True)
@@ -450,10 +454,11 @@ def collect_jsettlers_block(
     remaining_needed = target_games - len(completed)
     n_workers = min(workers, remaining_needed)
     n_jvms = min(jsettlers_jvms, n_workers)
-    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
+    if fixed_batch is None:
+        fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     print(
         f'\n[{block_name}] Collecting {remaining_needed} completed games vs JSettlers '
-        f'(reused {len(completed)}/{target_games} | backend={gpu_backend}, w={n_workers}, jvms={n_jvms}, b={coreml_batch}, s={gpu_streams}, l={mcts_lanes}, '
+        f'(reused {len(completed)}/{target_games} | backend={gpu_backend}, w={n_workers}, jvms={n_jvms}, b={coreml_batch}, fixed_b={fixed_batch}, s={gpu_streams}, l={mcts_lanes}, '
         f'sims={protocol["simulations"]}, setup_sims={eff_setup_sims}, setup_explore={setup_exploration_games}@T={setup_temperature})...',
         flush=True,
     )
@@ -805,18 +810,21 @@ def run_one_cohort(
     cnn_setup_exp = round(setup_exp_total * args.cnn_selfplay_games / total_games) if total_games > 0 else 0
     js_setup_exp = setup_exp_total - cnn_setup_exp
     eff_setup_sims = args.setup_simulations if args.setup_simulations is not None else args.simulations
+    use_static_batch = (args.gpu_backend == 'coreml') or (args.gpu_backend == 'cuda' and args.cuda_fixed_batch)
+    eff_fixed_batch = args.coreml_batch if use_static_batch else 0
+    onnx_dtype = 'float32' if (args.fp32 or args.gpu_backend != 'cuda') else 'float16'
     print(
         f'Collection        : {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN '
-        f'(w{args.workers}/js-w{args.jsettlers_workers}-jvms{args.jsettlers_jvms}, b{args.coreml_batch}-s{args.gpu_streams}-l{args.mcts_lanes}, '
-        f'{args.simulations} sims, setup_sims={eff_setup_sims}, setup_explore={setup_exp_total}@T={args.setup_temperature}, '
+        f'(w{args.workers}/js-w{args.jsettlers_workers}-jvms{args.jsettlers_jvms}, b{args.coreml_batch}-fixed{eff_fixed_batch}-s{args.gpu_streams}-l{args.mcts_lanes}, '
+        f'backend={args.gpu_backend}, dtype={onnx_dtype}, {args.simulations} sims, setup_sims={eff_setup_sims}, setup_explore={setup_exp_total}@T={args.setup_temperature}, '
         f'mcts_opponent={args.mcts_opponent})',
         flush=True,
     )
 
-    if args.gpu_backend == 'coreml':
-        cnn_onnx = export_checkpoint_coreml_static(cnn_ref, batch_size=args.coreml_batch)
+    if use_static_batch:
+        cnn_onnx = export_checkpoint_coreml_static(cnn_ref, batch_size=args.coreml_batch, dtype=onnx_dtype)
     else:
-        cnn_onnx = export_checkpoint_dynamic(cnn_ref)
+        cnn_onnx = export_checkpoint_dynamic(cnn_ref, dtype=onnx_dtype)
 
     block_refs = {}
     block_stats = {}
@@ -834,6 +842,7 @@ def run_one_cohort(
             setup_exploration_games=cnn_setup_exp,
             setup_temperature=args.setup_temperature,
             print_games=args.print_games,
+            fixed_batch=eff_fixed_batch,
         )
     if args.jsettlers_cnn_games > 0:
         block_refs['jsettlers_vs_cnn'], block_stats['jsettlers_vs_cnn'] = collect_jsettlers_block(
@@ -847,6 +856,7 @@ def run_one_cohort(
             setup_exploration_games=js_setup_exp,
             setup_temperature=args.setup_temperature,
             print_games=args.print_games,
+            fixed_batch=eff_fixed_batch,
         )
     collect_seconds = time.perf_counter() - t_collect
 
@@ -870,7 +880,10 @@ def run_one_cohort(
             'workers': args.workers,
             'jsettlers_workers': args.jsettlers_workers,
             'jsettlers_jvms': args.jsettlers_jvms,
+            'gpu_backend': args.gpu_backend,
+            'gpu_dtype': onnx_dtype,
             'coreml_batch': args.coreml_batch,
+            'fixed_batch': eff_fixed_batch,
             'gpu_streams': args.gpu_streams,
             'mcts_lanes': args.mcts_lanes,
             'virtual_loss': args.virtual_loss,
@@ -1060,6 +1073,7 @@ def main():
     parser.add_argument('--gpu-backend', choices=('coreml', 'cuda', 'cpu-batch'), default=default_gpu_backend(), help='Native Rust ONNX execution provider for game collection (default: cuda if available, else coreml on macOS, else cpu-batch)')
     parser.add_argument('--train-device', choices=('auto', 'cuda', 'mps', 'cpu'), default='auto', help='PyTorch device for W4 training and evaluation (default: auto)')
     parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=64, help='Max/static GPU inference batch size (default: 64)')
+    parser.add_argument('--cuda-fixed-batch', '--fixed-batch', dest='cuda_fixed_batch', action='store_true', help='Use static padded batches for CUDA EP (pairs with --batch-size / --coreml-batch)')
     parser.add_argument('--gpu-streams', type=int, default=4)
     parser.add_argument('--mcts-lanes', type=int, default=1)
     parser.add_argument('--virtual-loss', type=float, default=1.0)
@@ -1071,6 +1085,7 @@ def main():
     parser.add_argument('--replay-cohorts', type=int, default=2, help='Sliding replay buffer window size in cohorts, including current cohort (default: 2; 1 = current only)')
     parser.add_argument('--seed', type=int, default=2026112001)
     parser.add_argument('--print-games', action='store_true')
+    parser.add_argument('--fp32', action='store_true', help='Use float32 instead of default float16 for CUDA ONNX export')
     parser.add_argument('--skip-training', action='store_true', help='Only collect and verify games')
     args = parser.parse_args()
 
@@ -1110,7 +1125,7 @@ def main():
 
     cnn_ref = selfplay.reference(args.cnn_checkpoint.resolve())
     tr_ref = selfplay.reference(args.transformer_checkpoint.resolve())
-    frozen_ref = json.loads((ROOT / 'experiments/catan-ai/phase5-frozen-opponent.json').read_text())['checkpoint']
+    frozen_ref = resolve_frozen_opponent(cnn_ref, args.mcts_opponent)
 
     args.output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)

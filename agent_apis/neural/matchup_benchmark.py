@@ -36,6 +36,7 @@ from agent_apis.neural.native_assets import (
     NATIVE,
     ensure_binary,
     export_checkpoint,
+    resolve_frozen_opponent,
     runtime_environment,
 )
 from agent_apis.neural.device_utils import (
@@ -401,22 +402,27 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
 def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, simulations, opp_simulations,
                              workers, backend, max_batch, coreml_batch, wait_us, gpu_streams,
                              mcts_lanes, virtual_loss, max_turns, max_actions,
-                             mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                             mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
+                             dtype='float16', cuda_fixed_batch=False):
     binary = ensure_binary()
     frozen_onnx = export_checkpoint(frozen_ref)
     same_model = candidate_ref['sha256'] == opponent_ref['sha256']
 
     if backend in ('coreml', 'cuda'):
-        if backend == 'coreml':
-            cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
-            opp_onnx = cand_onnx if same_model else export_checkpoint_coreml_static(opponent_ref, batch_size=coreml_batch)
+        use_static = (backend == 'coreml') or cuda_fixed_batch
+        eff_dtype = 'float32' if backend == 'coreml' else dtype
+        eff_fixed = coreml_batch if use_static else 0
+        if use_static:
+            cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch, dtype=eff_dtype)
+            opp_onnx = cand_onnx if same_model else export_checkpoint_coreml_static(opponent_ref, batch_size=coreml_batch, dtype=eff_dtype)
         else:
-            cand_onnx = export_checkpoint_dynamic(candidate_ref)
-            opp_onnx = cand_onnx if same_model else export_checkpoint_dynamic(opponent_ref)
+            cand_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype)
+            opp_onnx = cand_onnx if same_model else export_checkpoint_dynamic(opponent_ref, dtype=eff_dtype)
         return _run_native_coreml_pool(
             binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss, max_turns, max_actions,
             gpu_backend=backend, mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
+            fixed_batch=eff_fixed,
         )
 
     cand_onnx = export_checkpoint(candidate_ref)
@@ -436,6 +442,7 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
             socket_path=socket_path,
             model_refs=model_refs,
             device=sock_device,
+            dtype=dtype,
             max_batch_rows=max_batch,
             wait_seconds=wait_us / 1_000_000.0,
         ).start()
@@ -532,9 +539,11 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
 def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
                             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes,
                             virtual_loss, max_turns, max_actions,
-                            gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                            gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
+                            fixed_batch=None):
     n_workers = min(workers, len(schedule))
-    fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
+    if fixed_batch is None:
+        fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     log = (NATIVE / 'target/worker-stderr.log').open('a')
     cmd = [
         str(binary), '--pool', '--workers', str(n_workers), '--gpu-backend', gpu_backend,
@@ -692,15 +701,17 @@ def run_native_jsettlers_coreml(
     schedule, candidate_ref, frozen_ref, simulations, workers,
     coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss,
     max_turns, max_actions, gpu_backend='coreml', mcts_opponent='self-policy',
+    dtype='float16', cuda_fixed_batch=False,
 ):
     """Run Model (native Rust + batched CoreML/CUDA GPU) vs SMART JSettlers."""
     binary = ensure_binary()
-    if gpu_backend == 'coreml':
-        cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch)
-        fixed_batch = coreml_batch
+    use_static = (gpu_backend == 'coreml') or cuda_fixed_batch
+    eff_dtype = 'float32' if gpu_backend == 'coreml' else dtype
+    fixed_batch = coreml_batch if use_static else 0
+    if use_static:
+        cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch, dtype=eff_dtype)
     else:
-        cand_onnx = export_checkpoint_dynamic(candidate_ref)
-        fixed_batch = 0
+        cand_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype)
     frozen_onnx = export_checkpoint(frozen_ref)
     n_workers = min(workers, len(schedule))
     bridge = NativeBridgePool(binary, n_workers, gpu_backend, coreml_batch, wait_us, gpu_streams, fixed_batch=fixed_batch)
@@ -844,6 +855,9 @@ def summarize_and_publish(results, elapsed, args, candidate_ref, opponent_ref, o
         'mcts_opponent': cand_mcts_opp,
         'opponent_mcts_opponent': opp_mcts_opp,
         'backend': args.backend,
+        'gpu_dtype': ('float32' if args.backend in ('cpu', 'coreml') or args.fp32 else 'float16'),
+        'batch_size': args.coreml_batch if args.backend in ('coreml', 'cuda') else args.max_batch,
+        'fixed_batch': (args.coreml_batch if (args.backend == 'coreml' or (args.backend == 'cuda' and args.cuda_fixed_batch)) else 0),
         'workers': args.workers,
         'paired_seats': not args.no_paired,
         'seed': args.seed,
@@ -902,7 +916,8 @@ def main():
     parser.add_argument('--opponent-simulations', type=int, default=None, help='Separate simulation count for the opponent model (default: matches --simulations; 0 = policy-only)')
     parser.add_argument('--backend', choices=('cpu', 'mps', 'coreml', 'cuda', 'cuda-socket'), default='cpu', help='Inference backend (coreml/mps on macOS; cuda/cuda-socket on NVIDIA GPU)')
     parser.add_argument('--max-batch', type=int, default=64)
-    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=32, help='GPU batch size for coreml (static) or cuda (max dynamic)')
+    parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=32, help='GPU batch size for coreml (static) or cuda (max dynamic, or static with --fixed-batch)')
+    parser.add_argument('--cuda-fixed-batch', '--fixed-batch', dest='cuda_fixed_batch', action='store_true', help='Use static padded batches for CUDA EP (pairs with --batch-size / --coreml-batch)')
     parser.add_argument('--wait-us', type=int, default=100)
     parser.add_argument('--gpu-streams', type=int, default=2)
     parser.add_argument('--mcts-lanes', type=int, default=1)
@@ -916,8 +931,10 @@ def main():
     parser.add_argument('--no-paired', action='store_true', help='Disable paired BLUE/RED seats on identical boards')
     parser.add_argument('--max-turns', type=int, default=1000)
     parser.add_argument('--max-actions', type=int, default=10000)
+    parser.add_argument('--fp32', action='store_true', help='Use float32 instead of default float16 on CUDA/PyTorch GPU inference')
     parser.add_argument('--output', type=Path, default=None)
     args = parser.parse_args()
+    gpu_dtype = 'float32' if args.fp32 else 'float16'
 
     if args.adversarial_puct:
         args.mcts_opponent = 'adversarial-puct'
@@ -934,7 +951,7 @@ def main():
     candidate_ref = resolve_checkpoint(args.candidate)
     opponent_kind = 'jsettlers' if args.opponent.lower() == 'jsettlers' else 'model'
     opponent_ref = None if opponent_kind == 'jsettlers' else resolve_checkpoint(args.opponent)
-    frozen_ref = json.loads((ROOT / 'experiments/catan-ai/phase5-frozen-opponent.json').read_text())['checkpoint']
+    frozen_ref = resolve_frozen_opponent(candidate_ref, args.mcts_opponent, args.opponent_mcts_opponent)
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     output_dir = args.output or (ROOT / f'runs/catan-ai/matchup-benchmark/{stamp}')
@@ -955,6 +972,7 @@ def main():
                 args.coreml_batch, args.wait_us, args.gpu_streams, args.mcts_lanes,
                 args.virtual_loss, args.max_turns, args.max_actions,
                 gpu_backend=args.backend, mcts_opponent=args.mcts_opponent,
+                dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
             )
         elif (
             opponent_kind == 'model'
@@ -965,10 +983,11 @@ def main():
             results = run_native_model_matchup(
                 schedule, candidate_ref, opponent_ref, frozen_ref, simulations, args.opponent_simulations,
                 args.workers, args.backend, args.max_batch, args.coreml_batch,
-                args.wait_us, args.gpu_streams, args.mcts_lanes, args.virtual_loss,
-                args.max_turns, args.max_actions,
+                args.wait_us, args.gpu_streams, args.mcts_lanes,
+                args.virtual_loss, args.max_turns, args.max_actions,
                 mcts_opponent=args.mcts_opponent,
                 opp_mcts_opponent=args.opponent_mcts_opponent,
+                dtype=gpu_dtype, cuda_fixed_batch=args.cuda_fixed_batch,
             )
         else:
             if args.backend in ('cuda', 'cuda-socket') and torch.cuda.is_available():

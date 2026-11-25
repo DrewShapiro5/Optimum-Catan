@@ -1,10 +1,10 @@
 # Catanotron GPU & Training CLI Tools
 
-Reference for the CLI tools and scripts added for batched GPU self-play, head-to-head evaluation, and multi-cohort training. All shell wrappers are run from the repo root (`/Users/drew/Desktop/Catanotron`) and forward any extra flags straight to the underlying Python module.
+Reference for the CLI tools and scripts added for batched GPU self-play, head-to-head evaluation, and multi-cohort training. All shell wrappers (`*.sh` on macOS/Linux, `*.ps1` on Windows) are run from the repo root and forward any extra flags straight to the underlying Python module.
 
 ---
 
-## 1. Multi-Cohort Training Pipeline (`./run_coreml_cohort.sh`)
+## 1. Multi-Cohort Training Pipeline (`./run_coreml_cohort.sh` / `.\run_cohort.ps1`)
 
 **Module:** `agent_apis/neural/coreml_cohort_pipeline.py`  
 **Purpose:** Collects replay-verified games (CNN vs. CNN via Rust CoreML `--pool`, plus JSettlers vs. CNN via Rust CoreML `--bridge-pool` + pooled Java JVMs), performs a stratified whole-game train/validation split (default 95/5 via `--validation-fraction`, no separate test split), loads all eligible training positions into RAM once per cohort and reslices `--positions-per-game` positions per game every `--resample-every` updates (keeping validation fixed), and trains both **XD-CNN** and **TYPED-EXPHORMER** on MPS with W4 weighting. Automatically chains each cohort's lowest-validation `best.pt` into the next cohort and is resumable per cohort and per game. Never auto-deploys checkpoints.
@@ -42,9 +42,10 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--workers` | `128` | Concurrent Rust game workers for CNN vs. CNN (`--pool`). |
 | `--jsettlers-workers` | Matches `--workers` | Concurrent Python/Rust workers for JSettlers vs. CNN (`--bridge-pool`). |
 | `--jsettlers-jvms` | `12` | Parallel Java JSettlers `Bridge` JVMs (sharded consistently by game session). |
-| `--gpu-backend` | Auto (`cuda` if available, else `coreml` on macOS, else `cpu-batch`) | Native Rust ONNX execution provider (`coreml`, `cuda`, or `cpu-batch`). |
+| `--gpu-backend` | Auto (`cuda` if available, else `coreml` on macOS, else `cpu-batch`) | Native Rust ONNX execution provider (`coreml`, `cuda`, or `cpu-batch`). CUDA uses FP16 ONNX by default unless `--fp32` is set. |
 | `--train-device` | `auto` | PyTorch device for W4 training and validation (`auto`, `cuda`, `mps`, or `cpu`). |
-| `--coreml-batch` / `--batch-size` | `64` | Static padded batch size for `coreml`, or max dynamic batch size for `cuda`. |
+| `--coreml-batch` / `--batch-size` | `64` | Static padded batch size for `coreml` (or `cuda` with `--fixed-batch`), otherwise max dynamic batch size for `cuda` / `cpu-batch`. |
+| `--cuda-fixed-batch` / `--fixed-batch` | `false` | Use static padded batches (matching `--batch-size` / `--coreml-batch`) with a static ONNX graph on `cuda`. |
 | `--gpu-streams` | `4` | Concurrent GPU inference owner threads. |
 | `--mcts-lanes` | `1` | Concurrent virtual-loss MCTS leaf-selection lanes per game (`1` = pure sequential MCTS). |
 | `--virtual-loss` | `1.0` | Virtual loss penalty applied to in-flight edges when `--mcts-lanes > 1`. |
@@ -56,11 +57,12 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--replay-cohorts` | `2` | Sliding training replay window in cohorts, including the current cohort (`1` = current only, `2` = current + 1 past). Validation always comes strictly from the current cohort. |
 | `--seed` | `2026112001` | Base random seed (offset per cohort). |
 | `--print-games` | `false` | Print a line to stdout on every completed game instead of every 50 games. |
-| `--skip-training` | `false` | Only collect and verify games; skip MPS training. |
+| `--fp32` | `false` | Use FP32 instead of default FP16 for CUDA ONNX export. |
+| `--skip-training` | `false` | Only collect and verify games; skip training. |
 
 ---
 
-## 2. Head-to-Head Matchup Benchmark (`./run_matchup_benchmark.sh`)
+## 2. Head-to-Head Matchup Benchmark (`./run_matchup_benchmark.sh` / `.\run_matchup_benchmark.ps1`)
 
 **Module:** `agent_apis/neural/matchup_benchmark.py`  
 **Purpose:** Evaluates a model checkpoint against **JSettlers (SMART)** or another model checkpoint with paired BLUE/RED seats on matched boards, Wilson 95% confidence intervals, and live running win rates. Writes `summary.json` and `REPORT.md`.
@@ -89,11 +91,12 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--policy-only` | `false` | Pure greedy policy argmax (`0` simulations). Mutually exclusive with `--simulations`. |
 | `--simulations` / `--candidate-simulations` | `64` | MCTS simulation budget per decision for the candidate. |
 | `--opponent-simulations` | Same as `--simulations` | Separate simulation count for the opponent model (runs natively on Rust CPU/MPS/CoreML when both sides > 0; `0` = policy-only). |
-| `--backend` | `cpu` | Inference backend: `cpu`, `mps`, `coreml`, `cuda` (in-process ORT CUDA EP), or `cuda-socket` (PyTorch CUDA TCP server). |
+| `--backend` | `cpu` | Inference backend: `cpu`, `mps`, `coreml`, `cuda` (in-process ORT CUDA EP), or `cuda-socket` (PyTorch CUDA TCP server). `cuda`, `cuda-socket`, and `mps` use FP16 by default unless `--fp32` is set. |
 | `--max-batch` | `64` | Max batch rows for `mps` / `cuda-socket` server. |
-| `--coreml-batch` / `--batch-size` | `32` | Static padded batch size for `coreml`, or max dynamic batch size for `cuda`. |
+| `--coreml-batch` / `--batch-size` | `32` | Static padded batch size for `coreml` (or `cuda` with `--fixed-batch`), otherwise max dynamic batch size for `cuda`. |
+| `--cuda-fixed-batch` / `--fixed-batch` | `false` | Use static padded batches (matching `--batch-size` / `--coreml-batch`) with a static ONNX graph on `cuda`. |
 | `--wait-us` | `100` | Batch-coalescing wait window in microseconds. |
-| `--gpu-streams` | `2` | Concurrent CoreML inference streams. |
+| `--gpu-streams` | `2` | Concurrent GPU inference streams (`coreml` / `cuda`). |
 | `--mcts-lanes` | `1` | Concurrent virtual-loss MCTS lanes per game. |
 | `--virtual-loss` | `1.0` | Virtual loss penalty when `--mcts-lanes > 1`. |
 | `--mcts-opponent` | `self-policy` | Candidate's opponent model inside MCTS: `self-policy` (default), `adversarial-puct` (cached-prior no-stop adversarial PUCT using own policy), or `frozen-mlp`. |
@@ -105,11 +108,12 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--no-paired` | `false` | Disable paired BLUE/RED seat swapping on identical boards. |
 | `--max-turns` | `1000` | Turn cutoff per game. |
 | `--max-actions` | `10000` | Action cutoff per game. |
+| `--fp32` | `false` | Use FP32 instead of default FP16 on CUDA/PyTorch GPU inference. |
 | `--output` | `runs/catan-ai/matchup-benchmark/<timestamp>` | Directory for `summary.json` and `REPORT.md`. |
 
 ---
 
-## 3. Throughput Benchmark (`./run_rust_gpu_benchmark.sh`)
+## 3. Throughput Benchmark (`./run_rust_gpu_benchmark.sh` / `.\run_rust_gpu_benchmark.ps1`)
 
 **Module:** `agent_apis/neural/native_gpu_benchmark.py`  
 **Purpose:** Benchmarks self-play throughput (`turns/s`, `decisions/s`, `sims/s`) across Rust CPU-only, PyTorch MPS Unix-socket batching, and in-process Rust CoreML EP batching, with MPS numerical parity and full replay verification. Outputs `summary.json`.
@@ -133,13 +137,16 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--output` | `runs/catan-ai/native-batched-gpu-benchmark[-transformer]` | Output directory for `summary.json` and temp journals. |
 | `--seconds` | `120` | Timed measurement window per configuration. |
 | `--simulations` | `128` | MCTS simulation budget per searched decision. |
+| `--setup-simulations` | Matches `--simulations` | MCTS simulation budget during the initial build phase (`is_initial_build_phase`). |
 | `--seed` | `2026111901` | Base seed for games. |
 | `--cpu-workers` | `12` | Comma-separated worker counts for Rust CPU-only baseline. |
 | `--mps-workers` | `12,16,24,48,64` | Comma-separated worker counts for PyTorch MPS Unix-socket server. |
 | `--coreml-workers` | `16,32` | Comma-separated worker counts for in-process CoreML EP pool (macOS). |
 | `--coreml-batch` | `32` | Static padded batch size for CoreML EP. |
 | `--cuda-workers` | `32,64,128` | Comma-separated worker counts for in-process CUDA EP pool (Windows/Linux NVIDIA). |
-| `--cuda-batch` | `64` | Max dynamic batch size for CUDA EP pool. |
+| `--cuda-batch` | `64` | Max dynamic (or static when `--fixed-batch` is passed) batch size for CUDA EP pool. |
+| `--cuda-fixed-batch` / `--fixed-batch` | `false` | Use static padded batches (matching `--cuda-batch`) with a static ONNX graph on CUDA EP. |
+| `--fp32` | `false` | Use FP32 instead of default FP16 for GPU benchmarks (`cuda`, `cuda-socket`, `mps`). |
 | `--cuda-socket-workers` | `32,64` | Comma-separated worker counts for PyTorch CUDA TCP socket server. |
 | `--gpu-streams` | `1` | Concurrent GPU inference streams for CoreML/CUDA pool. |
 | `--mcts-lanes` | `1` | Concurrent virtual-loss MCTS lanes per game. |
@@ -178,6 +185,10 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--bridge-pool` | `false` | Run in interactive multi-game bridge-pool mode (for JSettlers). |
 | `--workers <N>` | `12` | Number of Rust worker threads (`--pool` / `--bridge-pool`). |
 | `--gpu-backend <coreml\|cuda\|cpu-batch>` | `coreml` (macOS) / `cuda` (other) | In-process batch execution provider (`coreml`, `cuda`, or `cpu-batch`). |
+| `--max-batch <B>` | `64` | Maximum rows per batched forward pass. |
+| `--fixed-batch <B>` | `0` (dynamic) | Pad every batch to exact static size `B` (required for fast static CoreML graphs; enables static exhaustive cuDNN search on CUDA). |
+| `--wait-us <US>` | `500` | Queue coalescing timeout in microseconds. |
+| `--gpu-streams <S>` | `1` | Number of concurrent inference owner threads pulling from the batch queue. |
 
 ---
 
@@ -185,17 +196,19 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 
 Install Rust (MSVC toolchain), Java (for JSettlers), CUDA-enabled PyTorch, and `onnxruntime-gpu` in your Windows Python environment. `native_assets.py` automatically discovers `onnxruntime.dll` from `onnxruntime-gpu` (or `ORT_DYLIB_PATH`) and prepends the ORT/PyTorch CUDA DLL directories to `PATH`.
 
+CUDA paths use **FP16 by default** (pass `--fp32` to opt back in to FP32). Static padded batching can be enabled on `cuda` with `--fixed-batch` (`--cuda-fixed-batch`).
+
 ```powershell
-# Multi-cohort training on Windows + RTX 3080 (CUDA EP games + PyTorch CUDA training)
-.\run_cohort.ps1 --n-cohorts 3 --gpu-backend cuda --train-device cuda --workers 128 --batch-size 64 --gpu-streams 4 --wait-us 50
+# Multi-cohort training on Windows + RTX 3080 (FP16 CUDA EP games + PyTorch CUDA training)
+.\run_cohort.ps1 --n-cohorts 3 --gpu-backend cuda --train-device cuda --workers 256 --batch-size 128 --gpu-streams 1 --wait-us 500 --mcts-lanes 1
 
-# Head-to-head matchup benchmark (Model vs JSettlers or Model vs Model) on CUDA
-.\run_matchup_benchmark.ps1 --candidate latest-cnn --opponent jsettlers --games 100 --simulations 128 --backend cuda --workers 64 --batch-size 64 --gpu-streams 4
+# Multi-cohort training with static CUDA batch size 128
+.\run_cohort.ps1 --n-cohorts 3 --gpu-backend cuda --train-device cuda --workers 256 --batch-size 128 --fixed-batch --gpu-streams 1 --wait-us 500 --mcts-lanes 1
 
-# Throughput benchmark comparing CPU vs CUDA EP pool vs CUDA TCP socket
-.\run_rust_gpu_benchmark.ps1 --model cnn --skip-cpu --cuda-workers 64,128,192 --cuda-batch 64 --gpu-streams 4 --seconds 120
+# Head-to-head matchup benchmark (Model vs JSettlers or Model vs Model) on CUDA (FP16 default; add --fixed-batch or --fp32 if desired)
+.\run_matchup_benchmark.ps1 --candidate latest-cnn --opponent jsettlers --games 100 --simulations 128 --backend cuda --workers 256 --batch-size 128 --gpu-streams 1 --wait-us 500 --mcts-lanes 1
+
+# Throughput benchmark comparing FP16 dynamic vs static batching (add --fp32 for FP32 comparison)
+.\run_rust_gpu_benchmark.ps1 --model cnn --skip-cpu --skip-cuda-socket --cuda-workers 256 --cuda-batch 128 --gpu-streams 1 --wait-us 500 --seconds 30 --mcts-lanes 1
+.\run_rust_gpu_benchmark.ps1 --model cnn --skip-cpu --skip-cuda-socket --cuda-workers 256 --cuda-batch 128 --fixed-batch --gpu-streams 1 --wait-us 500 --seconds 30 --mcts-lanes 1
 ```
-| `--max-batch <B>` | `64` | Maximum rows per batched forward pass. |
-| `--fixed-batch <B>` | `0` (dynamic) | Pad every batch to exact static size `B` (required for fast static CoreML graphs). |
-| `--wait-us <US>` | `500` | Queue coalescing timeout in microseconds. |
-| `--gpu-streams <S>` | `1` | Number of concurrent inference owner threads pulling from the batch queue. |

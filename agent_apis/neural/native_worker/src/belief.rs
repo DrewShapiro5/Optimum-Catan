@@ -45,7 +45,7 @@ impl Belief {
         };
         let mut previous = -999;
         let (mut own_old, mut own_new) = ([0; 5], [0; 5]);
-        for (step, log) in w.logs.iter().enumerate() {
+        w.logs.for_each(|step, log| {
             let before_bought = b.bought;
             let before_played = b.played;
             let (mut kind, mut index) = (0, 0);
@@ -95,7 +95,7 @@ impl Belief {
                 });
                 previous = limit;
             }
-        }
+        });
         assert_eq!(
             std::array::from_fn::<_, 5, _>(|i| own_old[i] + own_new[i]),
             w.e.state.players[own].dev

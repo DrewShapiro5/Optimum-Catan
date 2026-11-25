@@ -20,6 +20,7 @@ extern "C" {
 pub struct Pcg {
     state: u128,
     inc: u128,
+    #[cfg(target_os = "macos")]
     cache: Option<u32>,
 }
 fn hashmix(mut value: u32, c: &mut u32) -> u32 {
@@ -70,6 +71,7 @@ impl Pcg {
         let mut p = Self {
             state: 0,
             inc: (sequence << 1) | 1,
+            #[cfg(target_os = "macos")]
             cache: None,
         };
         p.step();
@@ -90,6 +92,7 @@ impl Pcg {
     pub fn uniform(&mut self) -> f64 {
         (self.raw() >> 11) as f64 * (1. / 9007199254740992.)
     }
+    #[cfg(target_os = "macos")]
     fn bits32(&mut self) -> u32 {
         if let Some(c) = self.cache.take() {
             c

@@ -163,6 +163,16 @@ def _export_checkpoint(ref):
     return output
 
 
+def resolve_frozen_opponent(fallback_ref, *mcts_opponents):
+    """Return the pinned frozen MLP reference, or fall back when frozen-mlp is unused and missing."""
+    frozen = json.loads((ROOT / 'experiments/catan-ai/phase5-frozen-opponent.json').read_text())['checkpoint']
+    if (ROOT / frozen['path']).exists():
+        return frozen
+    if any(opp == 'frozen-mlp' for opp in mcts_opponents if opp is not None):
+        raise FileNotFoundError(f'Frozen MCTS opponent checkpoint not found: {ROOT / frozen["path"]}')
+    return fallback_ref
+
+
 def _discover_onnxruntime_library():
     """Find the platform-appropriate ONNX Runtime shared library."""
     runtime_dir = NATIVE / 'runtime'

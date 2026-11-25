@@ -6,7 +6,7 @@
 //! 2. `InProcessQueue`: In-process bounded Rust queue drained by `streams` concurrent GPU
 //!    owner threads running batched ONNX Runtime with CoreML EP, CUDA EP, or batched CPU.
 use super::*;
-use ort::execution_providers::CUDAExecutionProvider;
+use ort::execution_providers::cuda::{CuDNNConvAlgorithmSearch, CUDAExecutionProvider};
 #[cfg(target_os = "macos")]
 use ort::execution_providers::coreml::{
     CoreMLComputeUnits, CoreMLExecutionProvider, CoreMLModelFormat, CoreMLSpecializationStrategy,
@@ -285,7 +285,8 @@ pub struct BatchMetrics {
 struct InferRequest {
     model_path: String,
     features: Vec<f32>,
-    reply: SyncSender<Result<(Vec<f32>, f32), String>>,
+    slot: usize,
+    reply: SyncSender<(usize, Result<(Vec<f32>, f32), String>)>,
 }
 
 struct SharedQueueState {
@@ -310,12 +311,15 @@ impl QueueClient {
             guard.items.push_back(InferRequest {
                 model_path: model_path.to_string(),
                 features,
+                slot: 0,
                 reply: rtx,
             });
             cvar.notify_one();
         }
-        rrx.recv()
-            .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?
+        let (_, res) = rrx
+            .recv()
+            .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?;
+        res
     }
 
     pub fn predict_batch(
@@ -323,32 +327,40 @@ impl QueueClient {
         model_path: &str,
         batch: Vec<Vec<f32>>,
     ) -> Result<Vec<(Vec<f32>, f32)>, String> {
-        let mut receivers = Vec::with_capacity(batch.len());
+        let k = batch.len();
+        if k == 0 {
+            return Ok(vec![]);
+        }
+        if k == 1 {
+            let one = batch.into_iter().next().unwrap();
+            return Ok(vec![self.predict(model_path, one)?]);
+        }
+        let (rtx, rrx) = mpsc::sync_channel(k);
         {
             let (lock, cvar) = &*self.shared;
             let mut guard = lock.lock().unwrap();
             if guard.closed {
                 return Err("In-process GPU inference queue closed".to_string());
             }
-            for features in batch {
-                let (rtx, rrx) = mpsc::sync_channel(1);
+            for (slot, features) in batch.into_iter().enumerate() {
                 guard.items.push_back(InferRequest {
                     model_path: model_path.to_string(),
                     features,
-                    reply: rtx,
+                    slot,
+                    reply: rtx.clone(),
                 });
-                receivers.push(rrx);
             }
             cvar.notify_all();
         }
-        let mut results = Vec::with_capacity(receivers.len());
-        for rrx in receivers {
-            results.push(
-                rrx.recv()
-                    .map_err(|_| "In-process GPU inference thread dropped reply".to_string())??,
-            );
+        drop(rtx);
+        let mut ordered: Vec<Option<(Vec<f32>, f32)>> = vec![None; k];
+        for _ in 0..k {
+            let (slot, res) = rrx
+                .recv()
+                .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?;
+            ordered[slot] = Some(res?);
         }
-        Ok(results)
+        Ok(ordered.into_iter().map(|v| v.unwrap()).collect())
     }
 }
 
@@ -392,8 +404,14 @@ fn batched_session(
             }
         }
         InProcessBackend::Cuda => {
-            let _ = static_shapes;
-            let ep = CUDAExecutionProvider::default().with_device_id(0);
+            let ep = CUDAExecutionProvider::default()
+                .with_device_id(0)
+                .with_conv_algorithm_search(if static_shapes {
+                    CuDNNConvAlgorithmSearch::Exhaustive
+                } else {
+                    CuDNNConvAlgorithmSearch::Heuristic
+                })
+                .with_tf32(true);
             builder
                 .with_execution_providers([ep.build().error_on_failure()])?
                 .commit_from_file(path)
@@ -574,7 +592,7 @@ impl BatchQueue {
                                             backend, model_path, e
                                         );
                                         for req in group {
-                                            let _ = req.reply.send(Err(msg.clone()));
+                                            let _ = req.reply.send((req.slot, Err(msg.clone())));
                                         }
                                         continue;
                                     }
@@ -587,7 +605,23 @@ impl BatchQueue {
                                 .collect();
                             let n = features.len();
                             let fwd_start = Instant::now();
-                            let batch_res = run_batch(session, &features, fixed_batch);
+                            let batch_res = match std::panic::catch_unwind(
+                                std::panic::AssertUnwindSafe(|| {
+                                    run_batch(session, &features, fixed_batch)
+                                }),
+                            ) {
+                                Ok(res) => res,
+                                Err(payload) => {
+                                    let msg = payload
+                                        .downcast_ref::<&str>()
+                                        .copied()
+                                        .or_else(|| {
+                                            payload.downcast_ref::<String>().map(String::as_str)
+                                        })
+                                        .unwrap_or("GPU batch inference panicked");
+                                    Err(format!("GPU batch inference panicked: {msg}"))
+                                }
+                            };
                             let fwd_secs = fwd_start.elapsed().as_secs_f64();
 
                             if let Ok(mut m) = metrics_bg.lock() {
@@ -602,12 +636,12 @@ impl BatchQueue {
                             match batch_res {
                                 Ok(outputs) => {
                                     for (req, out) in group.into_iter().zip(outputs) {
-                                        let _ = req.reply.send(Ok(out));
+                                        let _ = req.reply.send((req.slot, Ok(out)));
                                     }
                                 }
                                 Err(err) => {
                                     for req in group {
-                                        let _ = req.reply.send(Err(err.clone()));
+                                        let _ = req.reply.send((req.slot, Err(err.clone())));
                                     }
                                 }
                             }

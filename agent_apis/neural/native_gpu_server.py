@@ -54,82 +54,9 @@ def load_inference_model(checkpoint_path, device='cpu'):
         torch.set_num_threads(prev_threads)
 
 
-def _dynamic_export_wrapper(model):
-    """Wrap XDCNN with symbolic `raw.shape[0]` so legacy ONNX export preserves dynamic batch size.
-
-    Leaves `agent_apis/neural/models.py` untouched so `model_implementation_sha256` stays valid.
-    """
-    from agent_apis.neural.models import XDCNN
-    if not isinstance(model, XDCNN):
-        return model
-
-    import torch.nn.functional as F
-
-    class _DynamicXDCNN(torch.nn.Module):
-        def __init__(self, base):
-            super().__init__()
-            self.base = base
-
-        def forward(self, raw):
-            inp = self.base.inputs
-            batch = raw.shape[0]
-            symmetry = torch.zeros((batch,), dtype=torch.long, device=raw.device)
-            transformed = raw.gather(1, inp.feature_inverse[symmetry])
-            ports = raw[:, inp.port_indices]
-            edge_ports = torch.zeros((batch, 72, 6), dtype=raw.dtype, device=raw.device)
-            edge_ports[:, inp.port_edges] = ports
-            edge_ports = edge_ports.gather(1, inp.edge_inverse[symmetry, :, None].expand(-1, -1, 6))
-            x = transformed / inp.scales
-            dice = F.one_hot(transformed[:, inp.dice_indices].long(), 13).to(raw.dtype)
-            tile = torch.cat((x[:, inp.tile_indices], dice), -1)
-            node = torch.cat((x[:, inp.node_indices], torch.matmul(inp.node_road, edge_ports)), -1)
-            road = torch.cat((x[:, inp.edge_indices], edge_ports), -1)
-            ids = inp.player_indices
-            player = torch.cat(
-                (
-                    x[:, ids.clamp_min(0)] * (ids >= 0),
-                    (ids >= 0).to(raw.dtype)[None].expand(batch, -1, -1),
-                ),
-                -1,
-            )
-            glob = x[:, inp.global_indices]
-
-            planes = torch.zeros((batch, self.base.h * self.base.w, 60), dtype=raw.dtype, device=raw.device)
-            planes[:, inp.tile_cell, :21] = tile
-            planes[:, inp.tile_cell, 55] = 1
-            planes[:, inp.node_cell, 21:31] = node
-            planes[:, inp.node_cell, 56] = 1
-            for ori in range(3):
-                selected = getattr(inp, f'road_group{ori}')
-                cells = inp.road_cell[selected]
-                planes[:, cells, 31 + 8 * ori : 39 + 8 * ori] = road[:, selected]
-                planes[:, cells, 57 + ori] = 1
-            spatial = self.base.initial(planes.transpose(1, 2).reshape(batch, 60, self.base.h, self.base.w)) * self.base.valid
-            scalar = self.base.scalar(torch.cat((glob, player.flatten(1)), 1))
-            for block in self.base.blocks:
-                spatial, scalar = block(spatial, scalar, self.base.valid)
-            flat = spatial.flatten(2).transpose(1, 2)
-            tile_tok = self.base.entity[0](flat[:, inp.tile_cell])
-            node_tok = self.base.entity[1](flat[:, inp.node_cell])
-            road_tok = torch.zeros((batch, 72, 128), dtype=flat.dtype, device=flat.device)
-            for ori in range(3):
-                selected = getattr(inp, f'road_group{ori}')
-                road_tok[:, selected] = self.base.entity[2 + ori](flat[:, inp.road_cell[selected]])
-            return self.base.heads((tile_tok, node_tok, road_tok, self.base.players(player), scalar))
-
-    return _DynamicXDCNN(model).eval()
-
-
-def _coreml_static_wrapper(model, batch_size):
-    """Scatter-free static-batch wrapper for XDCNN and TypedExphormer so CoreML EP fuses cleanly."""
-    from agent_apis.neural.models import XDCNN
-    from agent_apis.neural.value_ablation_models import TypedExphormer
-    if isinstance(model, TypedExphormer):
-        return _coreml_static_exphormer(model, batch_size)
-    if not isinstance(model, XDCNN):
-        return model
-
-    class _CoreMLStaticXDCNN(torch.nn.Module):
+def _scatter_free_xdcnn(model, batch_size=None):
+    """Scatter-free wrapper for XDCNN supporting dynamic or static batch shapes."""
+    class _ScatterFreeXDCNN(torch.nn.Module):
         def __init__(self, base, b):
             super().__init__()
             self.base = base
@@ -148,7 +75,8 @@ def _coreml_static_wrapper(model, batch_size):
             self.register_buffer('player_clamped', ids.clamp_min(0), persistent=False)
             pmask = (ids >= 0).to(torch.float32)
             self.register_buffer('player_mask', pmask, persistent=False)
-            self.register_buffer('player_mask_b', pmask[None].expand(b, -1, -1).clone(), persistent=False)
+            if b is not None:
+                self.register_buffer('player_mask_b', pmask[None].expand(b, -1, -1).clone(), persistent=False)
 
             tile_scatter = torch.zeros((hw, len(inp.tile_cell)), dtype=torch.float32)
             for j, cell in enumerate(inp.tile_cell.tolist()):
@@ -175,10 +103,13 @@ def _coreml_static_wrapper(model, batch_size):
                 for j, ridx in enumerate(selected.tolist()):
                     ru[ridx, j] = 1.0
                 self.register_buffer(f'road_unscatter{ori}', ru, persistent=False)
-            self.register_buffer('flags_b', flags[None].expand(b, -1, -1).clone(), persistent=False)
+            self.register_buffer('flags', flags, persistent=False)
+            if b is not None:
+                self.register_buffer('flags_b', flags[None].expand(b, -1, -1).clone(), persistent=False)
 
         def forward(self, raw):
             inp = self.base.inputs
+            batch = self.b if self.b is not None else raw.shape[0]
             ports = raw[:, inp.port_indices]
             edge_ports = torch.matmul(self.port_scatter, ports)
             x = raw / inp.scales
@@ -186,7 +117,9 @@ def _coreml_static_wrapper(model, batch_size):
             tile = torch.cat((x[:, inp.tile_indices], dice), -1)
             node = torch.cat((x[:, inp.node_indices], torch.matmul(inp.node_road, edge_ports)), -1)
             road = torch.cat((x[:, inp.edge_indices], edge_ports), -1)
-            player = torch.cat((x[:, self.player_clamped] * self.player_mask, self.player_mask_b), -1)
+            player_mask_b = self.player_mask_b if self.b is not None else self.player_mask[None].expand(batch, -1, -1)
+            flags_b = self.flags_b if self.b is not None else self.flags[None].expand(batch, -1, -1)
+            player = torch.cat((x[:, self.player_clamped] * self.player_mask, player_mask_b), -1)
             glob = x[:, inp.global_indices]
 
             tile_p = torch.matmul(self.tile_scatter, tile)
@@ -194,10 +127,10 @@ def _coreml_static_wrapper(model, batch_size):
             r0 = torch.matmul(self.road_scatter0, road[:, inp.road_group0])
             r1 = torch.matmul(self.road_scatter1, road[:, inp.road_group1])
             r2 = torch.matmul(self.road_scatter2, road[:, inp.road_group2])
-            planes = torch.cat((tile_p, node_p, r0, r1, r2, self.flags_b), -1)
+            planes = torch.cat((tile_p, node_p, r0, r1, r2, flags_b), -1)
 
             spatial = (
-                self.base.initial(planes.transpose(1, 2).reshape(self.b, 60, self.base.h, self.base.w))
+                self.base.initial(planes.transpose(1, 2).reshape(batch, 60, self.base.h, self.base.w))
                 * self.base.valid
             )
             scalar = self.base.scalar(torch.cat((glob, player.flatten(1)), 1))
@@ -213,14 +146,14 @@ def _coreml_static_wrapper(model, batch_size):
             )
             return self.base.heads((tile_tok, node_tok, road_tok, self.base.players(player), scalar))
 
-    return _CoreMLStaticXDCNN(model, batch_size).eval()
+    return _ScatterFreeXDCNN(model, batch_size).eval()
 
 
-def _coreml_static_exphormer(model, batch_size):
-    """Scatter-free static-batch TypedExphormer wrapper (identical dense 152x152 attention)."""
+def _scatter_free_exphormer(model, batch_size=None):
+    """Scatter-free TypedExphormer wrapper supporting dynamic or static batch shapes."""
     import torch.nn.functional as F
 
-    class _CoreMLStaticTypedExphormer(torch.nn.Module):
+    class _ScatterFreeTypedExphormer(torch.nn.Module):
         def __init__(self, base, b):
             super().__init__()
             self.base = base
@@ -237,8 +170,9 @@ def _coreml_static_exphormer(model, batch_size):
             self.register_buffer('player_clamped', ids.clamp_min(0), persistent=False)
             pmask = (ids >= 0).to(torch.float32)
             self.register_buffer('player_mask', pmask, persistent=False)
-            self.register_buffer('player_mask_b', pmask[None].expand(b, -1, -1).clone(), persistent=False)
-            self.register_buffer('connectors_b', base.connectors.detach()[None].expand(b, -1, -1).clone(), persistent=False)
+            if b is not None:
+                self.register_buffer('player_mask_b', pmask[None].expand(b, -1, -1).clone(), persistent=False)
+                self.register_buffer('connectors_b', base.connectors.detach()[None].expand(b, -1, -1).clone(), persistent=False)
 
             with torch.no_grad():
                 eb = base.edge_bias.weight.detach()  # [15, 4]
@@ -259,6 +193,7 @@ def _coreml_static_exphormer(model, batch_size):
 
         def forward(self, raw):
             inp = self.base.inputs
+            batch = self.b if self.b is not None else raw.shape[0]
             ports = raw[:, inp.port_indices]
             edge_ports = torch.matmul(self.port_scatter, ports)
             x = raw / inp.scales
@@ -266,7 +201,9 @@ def _coreml_static_exphormer(model, batch_size):
             tile = torch.cat((x[:, inp.tile_indices], dice), -1)
             node = torch.cat((x[:, inp.node_indices], torch.matmul(inp.node_road, edge_ports)), -1)
             road = torch.cat((x[:, inp.edge_indices], edge_ports), -1)
-            player = torch.cat((x[:, self.player_clamped] * self.player_mask, self.player_mask_b), -1)
+            player_mask_b = self.player_mask_b if self.b is not None else self.player_mask[None].expand(batch, -1, -1)
+            connectors_b = self.connectors_b if self.b is not None else self.base.connectors[None].expand(batch, -1, -1)
+            player = torch.cat((x[:, self.player_clamped] * self.player_mask, player_mask_b), -1)
             glob = x[:, inp.global_indices]
 
             owner_node = torch.stack((node[:, :, 0] + node[:, :, 1], node[:, :, 2] + node[:, :, 3]), 1)
@@ -276,7 +213,7 @@ def _coreml_static_exphormer(model, batch_size):
             port_adj = port_adj + port_adj.transpose(1, 2)
 
             states = self.base.embed({'tile': tile, 'node': node, 'road': road, 'player': player, 'global': glob})
-            entities = torch.cat((*states[:4], states[4][:, None], self.connectors_b), 1)
+            entities = torch.cat((*states[:4], states[4][:, None], connectors_b), 1)
 
             on_m = (owner_node != 0).to(raw.dtype)[:, None]
             on_mt = on_m.transpose(2, 3)
@@ -312,11 +249,116 @@ def _coreml_static_exphormer(model, batch_size):
                 entities = block(entities, bias)
             return self.base.heads((entities[:, :19], entities[:, 19:73], entities[:, 73:145], entities[:, 145:147], entities[:, 147]))
 
-    return _CoreMLStaticTypedExphormer(model, batch_size).eval()
+    return _ScatterFreeTypedExphormer(model, batch_size).eval()
 
 
-def export_checkpoint_coreml_static(ref, batch_size=32):
-    """Export a Scatter-free static-batch ONNX model optimized for Apple CoreML EP."""
+def _scatter_free_wrapper(model, batch_size=None):
+    """Scatter-free wrapper for XDCNN and TypedExphormer (static or dynamic batch)."""
+    from agent_apis.neural.models import XDCNN
+    from agent_apis.neural.value_ablation_models import TypedExphormer
+    if isinstance(model, TypedExphormer):
+        return _scatter_free_exphormer(model, batch_size)
+    if isinstance(model, XDCNN):
+        return _scatter_free_xdcnn(model, batch_size)
+    return model
+
+
+def _dynamic_export_wrapper(model):
+    """Scatter-free dynamic-batch wrapper for ONNX export."""
+    return _scatter_free_wrapper(model, batch_size=None)
+
+
+class _Fp16ExportWrapper(torch.nn.Module):
+    """Run an inner model in float16 while keeping float32 ONNX boundary I/O."""
+
+    def __init__(self, inner):
+        super().__init__()
+        self.inner = inner.half()
+        if hasattr(self.inner, 'neg_inf'):
+            self.inner.neg_inf.fill_(-1e4)
+
+    def forward(self, raw):
+        logits, val = self.inner(raw.half())
+        return logits.float(), val.float()
+
+
+def prepare_gpu_model(model, device, dtype='float16'):
+    """Prepare a scatter-free inference model on `device` in `float16` or `float32`."""
+    require(dtype in ('float16', 'float32'), f'Unsupported dtype: {dtype}')
+    wrapped = _scatter_free_wrapper(model).to(device).eval()
+    if dtype == 'float16' and str(device) != 'cpu':
+        return _Fp16ExportWrapper(wrapped).to(device).eval()
+    return wrapped
+
+
+def _export_onnx(export_model, dummy_shape, temporary, dynamic_axes, dtype):
+    require(dtype in ('float16', 'float32'), f'Unsupported ONNX export dtype: {dtype}')
+    import onnx
+    previous = torch.get_num_threads()
+    try:
+        torch.set_num_threads(1)
+        if dtype == 'float16':
+            if torch.cuda.is_available():
+                fp16_model = _Fp16ExportWrapper(export_model).to('cuda').eval()
+                dummy = torch.zeros(dummy_shape, dtype=torch.float32, device='cuda')
+                with torch.inference_mode():
+                    torch.onnx.export(
+                        fp16_model,
+                        (dummy,),
+                        str(temporary),
+                        input_names=['features'],
+                        output_names=['logits', 'value_logit'],
+                        dynamic_axes=dynamic_axes,
+                        opset_version=18,
+                        dynamo=False,
+                    )
+            else:
+                fp32_tmp = temporary.with_suffix('.fp32.onnx')
+                dummy = torch.zeros(dummy_shape, dtype=torch.float32)
+                with torch.inference_mode():
+                    torch.onnx.export(
+                        export_model,
+                        (dummy,),
+                        str(fp32_tmp),
+                        input_names=['features'],
+                        output_names=['logits', 'value_logit'],
+                        dynamic_axes=dynamic_axes,
+                        opset_version=18,
+                        dynamo=False,
+                    )
+                try:
+                    from onnxruntime.transformers.float16 import convert_float_to_float16
+                except ImportError:
+                    from onnxconverter_common.float16 import convert_float_to_float16
+                converted = convert_float_to_float16(onnx.load(str(fp32_tmp)), keep_io_types=True)
+                onnx.save(converted, str(temporary))
+                fp32_tmp.unlink(missing_ok=True)
+        else:
+            dummy = torch.zeros(dummy_shape, dtype=torch.float32)
+            with torch.inference_mode():
+                torch.onnx.export(
+                    export_model,
+                    (dummy,),
+                    str(temporary),
+                    input_names=['features'],
+                    output_names=['logits', 'value_logit'],
+                    dynamic_axes=dynamic_axes,
+                    opset_version=18,
+                    dynamo=False,
+                )
+        onnx.checker.check_model(str(temporary))
+    finally:
+        torch.set_num_threads(previous)
+
+
+def _coreml_static_wrapper(model, batch_size):
+    """Scatter-free static-batch wrapper for CoreML/CUDA EP static graph export."""
+    return _scatter_free_wrapper(model, batch_size=batch_size)
+
+
+def export_checkpoint_coreml_static(ref, batch_size=32, dtype='float32'):
+    """Export a Scatter-free static-batch ONNX model optimized for CoreML or static CUDA EP."""
+    require(dtype in ('float16', 'float32'), f'Unsupported dtype: {dtype}')
     with _EXPORT_LOCK, torch.random.fork_rng(devices=[]):
         require(file_digest(ROOT / ref['path']) == ref['sha256'], 'Native checkpoint changed')
         assets_dir = Path(__file__).parent
@@ -335,7 +377,7 @@ def export_checkpoint_coreml_static(ref, batch_size=32):
             'torch': torch.__version__,
             'opset': 18,
             'batch': f'coreml-static-{batch_size}-v3',
-            'dtype': 'float32',
+            'dtype': dtype,
             'features': FEATURES_DIM,
             'actions': ACTIONS_DIM,
         }
@@ -355,31 +397,16 @@ def export_checkpoint_coreml_static(ref, batch_size=32):
                 return output
             model = load_inference_model(ROOT / ref['path'], device='cpu')
             export_model = _coreml_static_wrapper(model, batch_size)
-            import onnx
-            previous = torch.get_num_threads()
-            try:
-                torch.set_num_threads(1)
-                temporary = folder / 'model.tmp.onnx'
-                with torch.inference_mode():
-                    torch.onnx.export(
-                        export_model,
-                        (torch.zeros(batch_size, FEATURES_DIM),),
-                        str(temporary),
-                        input_names=['features'],
-                        output_names=['logits', 'value_logit'],
-                        opset_version=18,
-                        dynamo=False,
-                    )
-                onnx.checker.check_model(str(temporary))
-                temporary.replace(output)
-                write(manifest, {'identity': identity, 'onnx_sha256': file_digest(output)})
-            finally:
-                torch.set_num_threads(previous)
+            temporary = folder / 'model.tmp.onnx'
+            _export_onnx(export_model, (batch_size, FEATURES_DIM), temporary, None, dtype)
+            temporary.replace(output)
+            write(manifest, {'identity': identity, 'onnx_sha256': file_digest(output)})
         return output
 
 
-def export_checkpoint_dynamic(ref):
-    """Export a dynamic-batch ONNX model for pure-Rust CoreML/ONNX batched inference."""
+def export_checkpoint_dynamic(ref, dtype='float16'):
+    """Export a scatter-free dynamic-batch ONNX model (FP16 by default, FP32 opt-in)."""
+    require(dtype in ('float16', 'float32'), f'Unsupported dtype: {dtype}')
     with _EXPORT_LOCK, torch.random.fork_rng(devices=[]):
         require(file_digest(ROOT / ref['path']) == ref['sha256'], 'Native checkpoint changed')
         assets_dir = Path(__file__).parent
@@ -397,8 +424,8 @@ def export_checkpoint_dynamic(ref):
             'sources': sources,
             'torch': torch.__version__,
             'opset': 18,
-            'batch': 'dynamic-v2',
-            'dtype': 'float32',
+            'batch': 'dynamic-v3',
+            'dtype': dtype,
             'features': FEATURES_DIM,
             'actions': ACTIONS_DIM,
         }
@@ -416,56 +443,36 @@ def export_checkpoint_dynamic(ref):
                     'Dynamic native model export changed',
                 )
                 return output
-            saved = torch.load(ROOT / ref['path'], map_location='cpu', weights_only=True)
-            if saved['metadata'].get('model_id') == 'TYPED-EXPHORMER' or saved.get('variant') == 'typed-exphormer':
-                from agent_apis.neural.value_ablation_models import TypedExphormer
-                model = TypedExphormer()
-                model.load_state_dict(saved['state_dict'], strict=True)
-                model.eval()
-            else:
-                prev_threads = torch.get_num_threads()
-                try:
-                    model = NeuralCheckpoint(ROOT / ref['path'], device='cpu').model.eval()
-                finally:
-                    torch.set_num_threads(prev_threads)
+            model = load_inference_model(ROOT / ref['path'], device='cpu')
             export_model = _dynamic_export_wrapper(model)
-            import onnx
-            previous = torch.get_num_threads()
-            try:
-                torch.set_num_threads(1)
-                temporary = folder / 'model.tmp.onnx'
-                with torch.inference_mode():
-                    torch.onnx.export(
-                        export_model,
-                        (torch.zeros(2, FEATURES_DIM),),
-                        str(temporary),
-                        input_names=['features'],
-                        output_names=['logits', 'value_logit'],
-                        dynamic_axes={
-                            'features': {0: 'batch'},
-                            'logits': {0: 'batch'},
-                            'value_logit': {0: 'batch'},
-                        },
-                        opset_version=18,
-                        dynamo=False,
-                    )
-                onnx.checker.check_model(str(temporary))
-                temporary.replace(output)
-                write(manifest, {'identity': identity, 'onnx_sha256': file_digest(output)})
-            finally:
-                torch.set_num_threads(previous)
+            temporary = folder / 'model.tmp.onnx'
+            _export_onnx(
+                export_model,
+                (2, FEATURES_DIM),
+                temporary,
+                {
+                    'features': {0: 'batch'},
+                    'logits': {0: 'batch'},
+                    'value_logit': {0: 'batch'},
+                },
+                dtype,
+            )
+            temporary.replace(output)
+            write(manifest, {'identity': identity, 'onnx_sha256': file_digest(output)})
         return output
 
 
 class BinaryGpuBatchServer:
     """Single-thread select server (Unix socket or TCP loopback) batching Rust worker inference on MPS/CUDA/CPU."""
 
-    def __init__(self, socket_path, model_refs, device='mps', max_batch_rows=64, wait_seconds=0.0005):
+    def __init__(self, socket_path, model_refs, device='mps', max_batch_rows=64, wait_seconds=0.0005, dtype='float16'):
         self.use_tcp = sys.platform == 'win32' or (isinstance(socket_path, str) and socket_path.startswith('tcp://')) or socket_path is None
         self.socket_path = None if self.use_tcp else Path(socket_path)
         self.endpoint = str(socket_path) if self.use_tcp and socket_path else (None if self.use_tcp else str(self.socket_path))
         self.model_refs = dict(model_refs)  # {int model_id: ref_dict}
         self.device = resolve_torch_device(device)
+        require(dtype in ('float16', 'float32'), f'Unsupported dtype: {dtype}')
+        self.dtype = 'float32' if self.device == 'cpu' else dtype
         self.max_batch_rows = max_batch_rows
         self.wait_seconds = wait_seconds
         self._stop_event = threading.Event()
@@ -506,7 +513,8 @@ class BinaryGpuBatchServer:
             models = {}
             for model_id, ref in self.model_refs.items():
                 require(file_digest(ROOT / ref['path']) == ref['sha256'], 'GPU server checkpoint changed')
-                models[int(model_id)] = load_inference_model(ROOT / ref['path'], device=self.device)
+                base_model = load_inference_model(ROOT / ref['path'], device='cpu')
+                models[int(model_id)] = prepare_gpu_model(base_model, self.device, dtype=self.dtype)
             torch.set_num_threads(1)
 
             # Warmup GPU kernels before accepting workers.

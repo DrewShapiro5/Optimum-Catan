@@ -63,7 +63,11 @@ pub struct Metrics {
     pub merged_classes: usize,
     pub retained_chance_children: usize,
     pub reused_nodes: usize,
+    pub reused_opponent_nodes: usize,
+    pub reused_world_states: usize,
     pub reused_root_visits: usize,
+    pub tree_nodes: usize,
+    pub tree_edges: usize,
     pub reuse_statistics_reset: bool,
     pub reset_reason: String,
     pub belief_evidence: f64,
@@ -91,7 +95,7 @@ pub struct ResultData {
 }
 pub struct Models {
     pub candidate: batch_gpu::CandidateModel,
-    pub opponent: Session,
+    pub opponent: Option<Session>,
 }
 impl Models {
     pub fn predict_candidate(&mut self, features: Vec<f32>) -> Result<(Vec<f32>, f32), String> {
@@ -104,7 +108,11 @@ impl Models {
         self.candidate.predict_batch(features_batch)
     }
     pub fn predict_opponent(&mut self, features: Vec<f32>) -> Result<(Vec<f32>, f32), String> {
-        predict(&mut self.opponent, features).map_err(|e| e.to_string())
+        let session = self
+            .opponent
+            .as_mut()
+            .ok_or_else(|| "Frozen opponent session was not loaded".to_string())?;
+        predict(session, features).map_err(|e| e.to_string())
     }
 }
 pub struct Search {
@@ -144,18 +152,46 @@ impl Search {
             allocations: vec![],
         }
     }
+    fn extract_actions(w: &World, enc: &Encoder) -> Vec<(Act, usize)> {
+        let mut actions: Vec<_> = w.e.actions.iter().map(|&a| (a, enc.id(&w.e, a))).collect();
+        actions.sort_by_key(|x| x.1);
+        actions
+    }
+    fn process_prediction(
+        &self,
+        w: &World,
+        enc: &Encoder,
+        scores: Vec<f32>,
+        raw_val: f32,
+    ) -> Result<(Vec<(Act, usize, f64)>, f64), String> {
+        if !scores.iter().all(|x| x.is_finite()) || !raw_val.is_finite() {
+            return Err("Nonfinite model prediction".to_string());
+        }
+        let actor = w.e.state.current;
+        let actions = Self::extract_actions(w, enc);
+        let ids: Vec<_> = actions.iter().map(|x| x.1).collect();
+        let priors = masked(&scores, &ids);
+        let value = (1. / (1. + (-(raw_val as f64)).exp())) as f32 as f64;
+        Ok((
+            actions
+                .into_iter()
+                .zip(priors)
+                .map(|((a, i), p)| (a, i, p))
+                .collect(),
+            if actor == self.own { value } else { 1. - value },
+        ))
+    }
     fn prediction(
         &mut self,
         w: &World,
         enc: &Encoder,
         models: &mut Models,
         opponent: bool,
-    ) -> (Vec<(Act, usize, f64)>, f64) {
+    ) -> Result<(Vec<(Act, usize, f64)>, f64), String> {
         let actor = w.e.state.current;
-        let mut actions: Vec<_> = w.e.actions.iter().map(|&a| (a, enc.id(&w.e, a))).collect();
-        actions.sort_by_key(|x| x.1);
+        let actions = Self::extract_actions(w, enc);
         if opponent && actions.len() == 1 {
-            return (vec![(actions[0].0, actions[0].1, 1.)], 0.5);
+            return Ok((vec![(actions[0].0, actions[0].1, 1.)], 0.5));
         }
         if opponent {
             self.m.opponent_evaluations += 1;
@@ -170,21 +206,9 @@ impl Search {
             models.predict_opponent(features)
         } else {
             models.predict_candidate(features)
-        }
-        .unwrap();
+        }?;
         self.m.inference_seconds += inference_start.elapsed().as_secs_f64();
-        assert!(scores.iter().all(|x| x.is_finite()) && value.is_finite());
-        let ids: Vec<_> = actions.iter().map(|x| x.1).collect();
-        let priors = masked(&scores, &ids);
-        let value = (1. / (1. + (-(value as f64)).exp())) as f32 as f64;
-        (
-            actions
-                .into_iter()
-                .zip(priors)
-                .map(|((a, i), p)| (a, i, p))
-                .collect(),
-            if actor == self.own { value } else { 1. - value },
-        )
+        self.process_prediction(w, enc, scores, value)
     }
     fn edge(&mut self, a: Act, p: f64) -> usize {
         let i = self.edges.len();
@@ -200,8 +224,7 @@ impl Search {
         });
         i
     }
-    fn node(&mut self, w: &World, enc: &Encoder, models: &mut Models) -> (usize, f64) {
-        let (pred, value) = self.prediction(w, enc, models, false);
+    fn expand_node(&mut self, w: &World, enc: &Encoder, pred: Vec<(Act, usize, f64)>) -> usize {
         let edges = pred.into_iter().map(|(a, _, p)| self.edge(a, p)).collect();
         let i = self.nodes.len();
         self.nodes.push(Node {
@@ -210,14 +233,150 @@ impl Search {
             vl_n: 0,
             edges,
         });
-        (i, value)
+        i
     }
-    fn backup_trace(&mut self, trace: &[(Option<usize>, usize, Key, Key)], v: f64, vl_loss: f64) {
+    fn pick_own_puct_edge(&self, w: &World, enc: &Encoder, ni: usize, use_vl: bool) -> usize {
+        let parent_n = if use_vl {
+            (self.nodes[ni].n + self.nodes[ni].vl_n).max(1) as f64
+        } else {
+            self.nodes[ni].n.max(1) as f64
+        };
+        let score = |i: usize| {
+            let e = &self.edges[i];
+            if use_vl {
+                let n_eff = e.n + e.vl_n;
+                let q = if n_eff == 0 {
+                    0.5
+                } else {
+                    (e.total - e.vl_loss) / n_eff as f64
+                };
+                q + 1.5 * e.prior * parent_n.sqrt() / (1 + n_eff) as f64
+            } else {
+                (if e.n == 0 { 0.5 } else { e.mean() })
+                    + 1.5 * e.prior * parent_n.sqrt() / (1 + e.n) as f64
+            }
+        };
+        *self.nodes[ni]
+            .edges
+            .iter()
+            .max_by(|&&a, &&b| {
+                score(a).total_cmp(&score(b)).then_with(|| {
+                    enc.id(&w.e, self.edges[b].a)
+                        .cmp(&enc.id(&w.e, self.edges[a].a))
+                })
+            })
+            .unwrap()
+    }
+    fn pick_adv_opp_edge(&mut self, w: &World, enc: &Encoder, ni: usize) -> usize {
+        let legal_edges: Vec<usize> = self.nodes[ni]
+            .edges
+            .iter()
+            .copied()
+            .filter(|&i| w.e.actions.contains(&self.edges[i].a))
+            .collect();
+        for &i in &legal_edges {
+            self.edges[i].avail += 1;
+        }
+        let score = |i: usize| {
+            let e = &self.edges[i];
+            let q_opp = if e.n == 0 { 0.5 } else { 1.0 - e.mean() };
+            q_opp + 1.5 * e.prior * (e.avail.max(1) as f64).sqrt() / (1 + e.n) as f64
+        };
+        *legal_edges
+            .iter()
+            .max_by(|&&a, &&b| {
+                score(a).total_cmp(&score(b)).then_with(|| {
+                    enc.id(&w.e, self.edges[b].a)
+                        .cmp(&enc.id(&w.e, self.edges[a].a))
+                })
+            })
+            .unwrap()
+    }
+    fn sample_opp_edge(&mut self, path: &TreePath, pred: Vec<(Act, usize, f64)>) -> usize {
+        let mut threshold = self.opponent.uniform();
+        let mut selected = *pred.last().unwrap();
+        for t in pred {
+            threshold -= t.2;
+            if threshold < 0. {
+                selected = t;
+                break;
+            }
+        }
+        let k = (path.clone(), selected.1);
+        if let Some(&i) = self.op_edges.get(&k) {
+            i
+        } else {
+            let i = self.edge(selected.0, selected.2);
+            self.op_edges.insert(k, i);
+            i
+        }
+    }
+    fn check_own_node_invariants(&self, w: &World, enc: &Encoder, ni: usize) {
+        assert_eq!(
+            self.nodes[ni].obs,
+            w.key(enc, self.own),
+            "Root path observation alias"
+        );
+        let actual: HashSet<_> = w.e.actions.iter().map(|&a| enc.id(&w.e, a)).collect();
+        let expected: HashSet<_> = self.nodes[ni]
+            .edges
+            .iter()
+            .map(|&i| enc.id(&w.e, self.edges[i].a))
+            .collect();
+        assert_eq!(actual, expected, "Hidden world changed legal mask");
+    }
+    fn finalize(&mut self, enc: &Encoder, start: Instant, root: &World) -> ResultData {
+        let ni = self.paths[&vec![]];
+        let mut rows: Vec<_> = self.nodes[ni]
+            .edges
+            .iter()
+            .map(|&i| {
+                let e = &self.edges[i];
+                Row {
+                    action_id: enc.id(&root.e, e.a),
+                    visits: e.n,
+                    mean_value: e.mean(),
+                    prior: e.prior,
+                }
+            })
+            .collect();
+        rows.sort_by_key(|r| r.action_id);
+        let selected = rows
+            .iter()
+            .max_by(|a, b| {
+                a.visits
+                    .cmp(&b.visits)
+                    .then_with(|| a.mean_value.total_cmp(&b.mean_value))
+                    .then_with(|| b.action_id.cmp(&a.action_id))
+            })
+            .unwrap()
+            .action_id;
+        self.selected = Some(selected);
+        self.m.tree_nodes = self.nodes.len();
+        self.m.tree_edges = self.edges.len();
+        self.m.seconds = start.elapsed().as_secs_f64();
+        ResultData {
+            action_id: selected,
+            sampled_action: selected,
+            statistics: rows,
+            metrics: self.m.clone(),
+            allocations: self.allocations.clone(),
+        }
+    }
+    fn backup_trace(
+        &mut self,
+        trace: &[(Option<usize>, usize, Key, Key)],
+        v: f64,
+        vl_loss: f64,
+        use_vl: bool,
+    ) {
         for &(node, edge, wk, ck) in trace.iter().rev() {
             if let Some(i) = node {
-                self.edges[edge].vl_n -= 1;
-                self.edges[edge].vl_loss -= vl_loss;
-                self.nodes[i].vl_n -= 1;
+                if use_vl {
+                    self.edges[edge].vl_n -= 1;
+                    self.edges[edge].vl_loss -= vl_loss;
+                    self.nodes[i].vl_n -= 1;
+                }
                 self.nodes[i].n += 1;
             }
             self.edges[edge].n += 1;
@@ -233,119 +392,29 @@ impl Search {
             c.total += v;
         }
     }
-    fn select_leaf(
+    fn sample_world(
         &mut self,
-        mut w: Arc<World>,
-        enc: &Encoder,
-        models: &mut Models,
-        vl_loss: f64,
-        mcts_opponent: MctsOpponent,
-    ) -> Option<(Arc<World>, TreePath, Vec<(Option<usize>, usize, Key, Key)>, Vec<f32>)> {
-        let mut path: TreePath = vec![];
-        let mut trace: Vec<(Option<usize>, usize, Key, Key)> = vec![];
-        let mut rd = 0usize;
-        let mut depth = 0usize;
-        loop {
-            if w.e.state.current == self.own && w.e.winner() < 0 {
-                self.positions
-                    .entry(path.clone())
-                    .or_insert_with(|| w.clone());
+        belief: &mut belief::Belief,
+        root: &World,
+        audit_allocations: bool,
+    ) -> Arc<World> {
+        let posterior_start = Instant::now();
+        let allocation = belief.sample(&mut self.world);
+        self.m.posterior_seconds += posterior_start.elapsed().as_secs_f64();
+        let key = serde_json::to_string(&allocation).unwrap();
+        let w = if let Some(w) = self.templates.get(&key) {
+            w.clone()
+        } else {
+            let w = Arc::new(root.sampled(&allocation, self.own));
+            if self.templates.len() < 128 {
+                self.templates.insert(key, w.clone());
             }
-            self.m.max_action_depth = self.m.max_action_depth.max(depth);
-            self.m.max_root_depth = self.m.max_root_depth.max(rd);
-            self.m.max_completed_turn_depth = self
-                .m
-                .max_completed_turn_depth
-                .max(w.e.state.turns - self.root.e.state.turns);
-            let winner = w.e.winner();
-            if winner >= 0 {
-                let v = (winner as usize == self.own) as u8 as f64;
-                self.backup_trace(&trace, v, vl_loss);
-                return None;
-            }
-            if depth >= 128 {
-                self.m.capped_simulations += 1;
-                self.backup_trace(&trace, 0.5, vl_loss);
-                return None;
-            }
-            let (edge, node, next_rd) = if w.e.state.current == self.own {
-                let ni = if let Some(&ni) = self.paths.get(&path) {
-                    ni
-                } else {
-                    let feature_start = Instant::now();
-                    let features = w.features(enc, w.e.state.current).clone();
-                    self.m.feature_seconds += feature_start.elapsed().as_secs_f64();
-                    return Some((w, path, trace, features));
-                };
-                assert_eq!(
-                    self.nodes[ni].obs,
-                    w.key(enc, self.own),
-                    "Root path observation alias"
-                );
-                let parent_n = (self.nodes[ni].n + self.nodes[ni].vl_n).max(1) as f64;
-                let score = |i: usize| {
-                    let e = &self.edges[i];
-                    let n_eff = e.n + e.vl_n;
-                    let q = if n_eff == 0 {
-                        0.5
-                    } else {
-                        (e.total - e.vl_loss) / n_eff as f64
-                    };
-                    q + 1.5 * e.prior * parent_n.sqrt() / (1 + n_eff) as f64
-                };
-                let ei = *self.nodes[ni]
-                    .edges
-                    .iter()
-                    .max_by(|&&a, &&b| {
-                        score(a).total_cmp(&score(b)).then_with(|| {
-                            enc.id(&w.e, self.edges[b].a)
-                                .cmp(&enc.id(&w.e, self.edges[a].a))
-                        })
-                    })
-                    .unwrap();
-                self.edges[ei].vl_n += 1;
-                self.edges[ei].vl_loss += vl_loss;
-                self.nodes[ni].vl_n += 1;
-                (ei, Some(ni), rd + 1)
-            } else {
-                let (selected_act, selected_id, selected_p) = if w.e.actions.len() == 1 {
-                    let a = w.e.actions[0];
-                    (a, enc.id(&w.e, a), 1.0)
-                } else {
-                    let use_frozen = mcts_opponent == MctsOpponent::FrozenMlp;
-                    let (pred, _) = self.prediction(&w, enc, models, use_frozen);
-                    let mut threshold = self.opponent.uniform();
-                    let mut selected = *pred.last().unwrap();
-                    for t in pred {
-                        threshold -= t.2;
-                        if threshold < 0. {
-                            selected = t;
-                            break;
-                        }
-                    }
-                    selected
-                };
-                let k = (path.clone(), selected_id);
-                let ei = if let Some(&i) = self.op_edges.get(&k) {
-                    i
-                } else {
-                    let i = self.edge(selected_act, selected_p);
-                    self.op_edges.insert(k, i);
-                    i
-                };
-                (ei, None, rd)
-            };
-            let (child, wk, ck, denied) = self.step(&w, edge);
-            path.push(Step {
-                id: enc.id(&w.e, self.edges[edge].a),
-                visible: visible(&child, enc, self.own),
-                denied,
-            });
-            trace.push((node, edge, wk, ck));
-            w = child;
-            rd = next_rd;
-            depth += 1;
+            w
+        };
+        if audit_allocations {
+            self.allocations.push(allocation);
         }
+        w
     }
     fn shortages(w: &World, sum: i32) -> u8 {
         if sum == 7 {
@@ -405,7 +474,10 @@ impl Search {
         for (rep, p) in raw {
             let denied = if a.k == 1 { Self::shortages(w, rep) } else { 0 };
             let child = w.step(a, rep);
-            let key = hash(&(child.canonical(), denied));
+            let mut hasher = Sha256::new();
+            hasher.update(child.canonical());
+            hasher.update([denied]);
+            let key: Key = hasher.finalize().into();
             if let Some(c) = classes.iter_mut().find(|c| c.key == key) {
                 c.p += p;
             } else {
@@ -464,195 +536,6 @@ impl Search {
             .clone();
         (child, key, selected.key, selected.denied)
     }
-    fn simulate(
-        &mut self,
-        w: Arc<World>,
-        path: TreePath,
-        rd: usize,
-        depth: usize,
-        enc: &Encoder,
-        models: &mut Models,
-        mcts_opponent: MctsOpponent,
-    ) -> f64 {
-        if w.e.state.current == self.own && w.e.winner() < 0 {
-            self.positions
-                .entry(path.clone())
-                .or_insert_with(|| w.clone());
-        }
-        self.m.max_action_depth = self.m.max_action_depth.max(depth);
-        self.m.max_root_depth = self.m.max_root_depth.max(rd);
-        self.m.max_completed_turn_depth = self
-            .m
-            .max_completed_turn_depth
-            .max(w.e.state.turns - self.root.e.state.turns);
-        let winner = w.e.winner();
-        if winner >= 0 {
-            return (winner as usize == self.own) as u8 as f64;
-        }
-        if depth >= 128 {
-            self.m.capped_simulations += 1;
-            return 0.5;
-        }
-        let (edge, node, next_rd) = if w.e.state.current == self.own {
-            let ni = if let Some(&ni) = self.paths.get(&path) {
-                ni
-            } else {
-                let (ni, v) = self.node(&w, enc, models);
-                self.paths.insert(path, ni);
-                self.nodes[ni].n += 1;
-                return v;
-            };
-            assert_eq!(
-                self.nodes[ni].obs,
-                w.key(enc, self.own),
-                "Root path observation alias"
-            );
-            let actual: HashSet<_> = w.e.actions.iter().map(|&a| enc.id(&w.e, a)).collect();
-            let expected: HashSet<_> = self.nodes[ni]
-                .edges
-                .iter()
-                .map(|&i| enc.id(&w.e, self.edges[i].a))
-                .collect();
-            assert_eq!(actual, expected, "Hidden world changed legal mask");
-            let score = |i: usize| {
-                let e = &self.edges[i];
-                (if e.n == 0 { 0.5 } else { e.mean() })
-                    + 1.5 * e.prior * (self.nodes[ni].n.max(1) as f64).sqrt() / (1 + e.n) as f64
-            };
-            let ei = *self.nodes[ni]
-                .edges
-                .iter()
-                .max_by(|&&a, &&b| {
-                    score(a).total_cmp(&score(b)).then_with(|| {
-                        enc.id(&w.e, self.edges[b].a)
-                            .cmp(&enc.id(&w.e, self.edges[a].a))
-                    })
-                })
-                .unwrap();
-            (ei, Some(ni), rd + 1)
-        } else if mcts_opponent == MctsOpponent::AdversarialPuct {
-            if w.e.actions.len() == 1 {
-                let a = w.e.actions[0];
-                let aid = enc.id(&w.e, a);
-                let k = (path.clone(), aid);
-                let ei = if let Some(&i) = self.op_edges.get(&k) {
-                    i
-                } else {
-                    let i = self.edge(a, 1.0);
-                    self.op_edges.insert(k, i);
-                    i
-                };
-                (ei, None, rd)
-            } else {
-                // Cached-prior no-stop adversarial IS-MCTS PUCT: evaluate candidate policy
-                // once to cache priors on the opponent node, then continue descending to
-                // own next leaf so opponent turns do not cut lookahead depth in half.
-                let ni = if let Some(&ni) = self.op_paths.get(&path) {
-                    let existing_acts: Vec<Act> = self.nodes[ni]
-                        .edges
-                        .iter()
-                        .map(|&i| self.edges[i].a)
-                        .collect();
-                    if w.e.actions.iter().any(|a| !existing_acts.contains(a)) {
-                        let (pred, _) = self.prediction(&w, enc, models, false);
-                        for (a, _, p) in pred {
-                            if !existing_acts.contains(&a) {
-                                let ei = self.edge(a, p);
-                                self.nodes[ni].edges.push(ei);
-                            }
-                        }
-                    }
-                    ni
-                } else {
-                    let (pred, _) = self.prediction(&w, enc, models, false);
-                    let edges = pred.into_iter().map(|(a, _, p)| self.edge(a, p)).collect();
-                    let ni = self.nodes.len();
-                    self.nodes.push(Node {
-                        obs: w.key(enc, self.own),
-                        n: 0,
-                        vl_n: 0,
-                        edges,
-                    });
-                    self.op_paths.insert(path.clone(), ni);
-                    ni
-                };
-                let legal_edges: Vec<usize> = self.nodes[ni]
-                    .edges
-                    .iter()
-                    .copied()
-                    .filter(|&i| w.e.actions.contains(&self.edges[i].a))
-                    .collect();
-                for &i in &legal_edges {
-                    self.edges[i].avail += 1;
-                }
-                let score = |i: usize| {
-                    let e = &self.edges[i];
-                    let q_opp = if e.n == 0 { 0.5 } else { 1.0 - e.mean() };
-                    q_opp + 1.5 * e.prior * (e.avail.max(1) as f64).sqrt() / (1 + e.n) as f64
-                };
-                let ei = *legal_edges
-                    .iter()
-                    .max_by(|&&a, &&b| {
-                        score(a).total_cmp(&score(b)).then_with(|| {
-                            enc.id(&w.e, self.edges[b].a)
-                                .cmp(&enc.id(&w.e, self.edges[a].a))
-                        })
-                    })
-                    .unwrap();
-                (ei, Some(ni), rd)
-            }
-        } else {
-            let (selected_act, selected_id, selected_p) = if w.e.actions.len() == 1 {
-                let a = w.e.actions[0];
-                (a, enc.id(&w.e, a), 1.0)
-            } else {
-                let use_frozen = mcts_opponent == MctsOpponent::FrozenMlp;
-                let (pred, _) = self.prediction(&w, enc, models, use_frozen);
-                let mut threshold = self.opponent.uniform();
-                let mut selected = *pred.last().unwrap();
-                for t in pred {
-                    threshold -= t.2;
-                    if threshold < 0. {
-                        selected = t;
-                        break;
-                    }
-                }
-                selected
-            };
-            let k = (path.clone(), selected_id);
-            let ei = if let Some(&i) = self.op_edges.get(&k) {
-                i
-            } else {
-                let i = self.edge(selected_act, selected_p);
-                self.op_edges.insert(k, i);
-                i
-            };
-            (ei, None, rd)
-        };
-        let (child, wk, ck, denied) = self.step(&w, edge);
-        let mut next = path;
-        next.push(Step {
-            id: enc.id(&w.e, self.edges[edge].a),
-            visible: visible(&child, enc, self.own),
-            denied,
-        });
-        let v = self.simulate(child, next, next_rd, depth + 1, enc, models, mcts_opponent);
-        self.edges[edge].n += 1;
-        self.edges[edge].total += v;
-        let c = self.edges[edge]
-            .worlds
-            .get_mut(&wk)
-            .unwrap()
-            .children
-            .get_mut(&ck)
-            .unwrap();
-        c.n += 1;
-        c.total += v;
-        if let Some(i) = node {
-            self.nodes[i].n += 1;
-        }
-        v
-    }
     pub fn run(
         &mut self,
         enc: &Encoder,
@@ -661,239 +544,48 @@ impl Search {
         o: &Options,
         noise_override: Option<&[f64]>,
         audit_allocations: bool,
-    ) -> ResultData {
-        let start = Instant::now();
-        let previous = self.m.clone();
-        self.m = Metrics::default();
-        self.m.reused_nodes = previous.reused_nodes;
-        self.m.reused_root_visits = previous.reused_root_visits;
-        self.m.reuse_statistics_reset = previous.reuse_statistics_reset;
-        self.m.reset_reason = previous.reset_reason;
-        self.chance = rng::Rng::new(rng::named(seed, "chance"));
-        self.world = rng::Rng::new(rng::named(seed, "worlds"));
-        self.opponent = rng::Rng::new(rng::named(seed, "opponent"));
-        self.templates.clear();
-        self.allocations.clear();
-        let root = self.root.clone();
-        if root.e.actions.len() == 1 {
-            let id = enc.id(&root.e, root.e.actions[0]);
-            return ResultData {
-                action_id: id,
-                sampled_action: id,
-                statistics: vec![],
-                metrics: self.m.clone(),
-                allocations: vec![],
-            };
-        }
-        let ni = if let Some(&n) = self.paths.get(&vec![]) {
-            n
-        } else {
-            let (n, _) = self.node(&root, enc, models);
-            self.paths.insert(vec![], n);
-            n
-        };
-        // Same two evaluations on a fresh tree as ExploratorySearch: create node, refresh priors.
-        let (pred, _) = self.prediction(&root, enc, models, false);
-        let noise = if !o.noise {
-            vec![0.; pred.len()]
-        } else if let Some(x) = noise_override {
-            assert_eq!(x.len(), pred.len());
-            x.to_vec()
-        } else {
-            pcg::Pcg::new(rng::named(seed, "root-noise")).dirichlet(pred.len())
-        };
-        self.m.root_noise = noise.clone();
-        for ((_, id, p), n) in pred.iter().zip(noise) {
-            let ei = *self.nodes[ni]
-                .edges
-                .iter()
-                .find(|&&i| enc.id(&root.e, self.edges[i].a) == *id)
-                .unwrap();
-            self.edges[ei].prior = if o.noise { 0.75 * p + 0.25 * n } else { *p };
-        }
-        let posterior_start = Instant::now();
-        let mut belief = belief::Belief::new(&root, self.own);
-        self.m.posterior_seconds += posterior_start.elapsed().as_secs_f64();
-        self.m.belief_evidence = belief.evidence;
-        let mut longest = 0f64;
-        let lanes = if o.mcts_opponent == MctsOpponent::AdversarialPuct {
-            1
-        } else {
-            o.lanes.max(1)
-        };
-        if lanes == 1 {
-            loop {
-                if o.simulations.is_some_and(|n| self.m.simulations >= n) {
-                    break;
+    ) -> Result<ResultData, String> {
+        let placeholder = Search::new(self.root.clone(), 0);
+        let moved = std::mem::replace(self, placeholder);
+        let mut stepper = SearchStepper::new(moved, seed, o, noise_override, audit_allocations);
+        let mut reply = None;
+        loop {
+            match stepper.step(enc, models, reply)? {
+                StepOutcome::Done { search, result } => {
+                    *self = search;
+                    return Ok(result);
                 }
-                if let Some(seconds) = o.seconds {
-                    if start.elapsed().as_secs_f64() + 1.25 * longest >= seconds {
-                        break;
-                    }
+                StepOutcome::NeedCandidate {
+                    stepper: mut next_stepper,
+                    features,
+                } => {
+                    let infer_start = Instant::now();
+                    let out = models.predict_candidate_batch(features)?;
+                    next_stepper.add_inference_seconds(infer_start.elapsed().as_secs_f64());
+                    stepper = next_stepper;
+                    reply = Some(out);
                 }
-                let begin = Instant::now();
-                let posterior_start = Instant::now();
-                let allocation = belief.sample(&mut self.world);
-                self.m.posterior_seconds += posterior_start.elapsed().as_secs_f64();
-                let key = serde_json::to_string(&allocation).unwrap();
-                let w = if let Some(w) = self.templates.get(&key) {
-                    w.clone()
-                } else {
-                    let w = Arc::new(root.sampled(&allocation, self.own));
-                    if self.templates.len() < 128 {
-                        self.templates.insert(key, w.clone());
-                    }
-                    w
-                };
-                if audit_allocations {
-                    self.allocations.push(allocation);
-                }
-                self.simulate(w, vec![], 0, 0, enc, models, o.mcts_opponent);
-                self.m.simulations += 1;
-                longest = longest.max(begin.elapsed().as_secs_f64());
             }
-        } else {
-            loop {
-                if o.simulations.is_some_and(|n| self.m.simulations >= n) {
-                    break;
-                }
-                if let Some(seconds) = o.seconds {
-                    if start.elapsed().as_secs_f64() + 1.25 * longest >= seconds {
-                        break;
-                    }
-                }
-                let begin = Instant::now();
-                let remaining = o
-                    .simulations
-                    .map(|n| n.saturating_sub(self.m.simulations))
-                    .unwrap_or(lanes);
-                let wave_target = lanes.min(remaining);
-                let mut pending = Vec::with_capacity(wave_target);
-                let mut features_batch = Vec::with_capacity(wave_target);
-                for _ in 0..wave_target {
-                    let posterior_start = Instant::now();
-                    let allocation = belief.sample(&mut self.world);
-                    self.m.posterior_seconds += posterior_start.elapsed().as_secs_f64();
-                    let key = serde_json::to_string(&allocation).unwrap();
-                    let w = if let Some(w) = self.templates.get(&key) {
-                        w.clone()
-                    } else {
-                        let w = Arc::new(root.sampled(&allocation, self.own));
-                        if self.templates.len() < 128 {
-                            self.templates.insert(key, w.clone());
-                        }
-                        w
-                    };
-                    if audit_allocations {
-                        self.allocations.push(allocation);
-                    }
-                    if let Some((lw, path, trace, feat)) =
-                        self.select_leaf(w, enc, models, o.virtual_loss, o.mcts_opponent)
-                    {
-                        pending.push((lw, path, trace));
-                        features_batch.push(feat);
-                    } else {
-                        self.m.simulations += 1;
-                    }
-                }
-                if !pending.is_empty() {
-                    self.m.evaluations += pending.len();
-                    let inference_start = Instant::now();
-                    let outputs = models.predict_candidate_batch(features_batch).unwrap();
-                    self.m.inference_seconds += inference_start.elapsed().as_secs_f64();
-                    for ((lw, path, trace), (scores, raw_val)) in
-                        pending.into_iter().zip(outputs.into_iter())
-                    {
-                        assert!(scores.iter().all(|x| x.is_finite()) && raw_val.is_finite());
-                        let actor = lw.e.state.current;
-                        let val = (1. / (1. + (-(raw_val as f64)).exp())) as f32 as f64;
-                        let v = if actor == self.own { val } else { 1. - val };
-                        if let Some(&existing_ni) = self.paths.get(&path) {
-                            self.nodes[existing_ni].n += 1;
-                        } else {
-                            let mut actions: Vec<_> = lw
-                                .e
-                                .actions
-                                .iter()
-                                .map(|&a| (a, enc.id(&lw.e, a)))
-                                .collect();
-                            actions.sort_by_key(|x| x.1);
-                            let ids: Vec<_> = actions.iter().map(|x| x.1).collect();
-                            let priors = masked(&scores, &ids);
-                            let edges = actions
-                                .into_iter()
-                                .zip(priors)
-                                .map(|((a, _), p)| self.edge(a, p))
-                                .collect();
-                            let new_ni = self.nodes.len();
-                            self.nodes.push(Node {
-                                obs: lw.key(enc, self.own),
-                                n: 1,
-                                vl_n: 0,
-                                edges,
-                            });
-                            self.paths.insert(path, new_ni);
-                        }
-                        self.backup_trace(&trace, v, o.virtual_loss);
-                        self.m.simulations += 1;
-                    }
-                }
-                longest = longest.max(begin.elapsed().as_secs_f64());
-            }
-            assert!(self.edges.iter().all(|e| e.vl_n == 0));
-            assert!(self.nodes.iter().all(|n| n.vl_n == 0));
-        }
-        let mut rows: Vec<_> = self.nodes[ni]
-            .edges
-            .iter()
-            .map(|&i| {
-                let e = &self.edges[i];
-                Row {
-                    action_id: enc.id(&root.e, e.a),
-                    visits: e.n,
-                    mean_value: e.mean(),
-                    prior: e.prior,
-                }
-            })
-            .collect();
-        rows.sort_by_key(|r| r.action_id);
-        let selected = rows
-            .iter()
-            .max_by(|a, b| {
-                a.visits
-                    .cmp(&b.visits)
-                    .then_with(|| a.mean_value.total_cmp(&b.mean_value))
-                    .then_with(|| b.action_id.cmp(&a.action_id))
-            })
-            .unwrap()
-            .action_id;
-        self.selected = Some(selected);
-        self.m.seconds = start.elapsed().as_secs_f64();
-        ResultData {
-            action_id: selected,
-            sampled_action: selected,
-            statistics: rows,
-            metrics: self.m.clone(),
-            allocations: self.allocations.clone(),
         }
     }
     pub fn advance(mut self, root: Arc<World>, enc: &Encoder) -> Self {
         let mut reason = "compatible-subtree";
         let delta = root.logs.len().saturating_sub(self.root.logs.len());
-        let matches_history = delta > 0
-            && root.logs.len() >= self.root.logs.len()
-            && root
-                .logs
-                .iter()
-                .zip(self.root.logs.iter())
-                .all(|(a, b)| log_same(a, b, self.own));
+        let mut matches_history = delta > 0 && root.logs.len() >= self.root.logs.len();
+        if matches_history {
+            self.root.logs.for_each(|i, b| {
+                if matches_history && !log_same(root.logs.get(i), b, self.own) {
+                    matches_history = false;
+                }
+            });
+        }
         if !matches_history {
             reason = "history-rewind-or-divergence";
         }
         // Rates can change after the first new action; derive its canonical ID on the old root.
         let matches_history = if matches_history {
             let matched =
-                self.selected == Some(enc.id(&self.root.e, root.logs[self.root.logs.len()].a));
+                self.selected == Some(enc.id(&self.root.e, root.logs.get(self.root.logs.len()).a));
             if !matched {
                 reason = "different-played-action";
             }
@@ -954,7 +646,7 @@ impl Search {
                     .filter(|(p, _)| p.starts_with(&prefix))
                     .map(|(p, w)| (p[prefix.len()..].to_vec(), w))
                     .collect();
-                let reset = root.logs.iter().any(|l| l.p != self.own && l.a.k == 5)
+                let reset = root.logs.any(|l| l.p != self.own && l.a.k == 5)
                     || self.m.capped_simulations > 0;
                 let mut used = HashSet::new();
                 for &n in self.paths.values().chain(self.op_paths.values()) {
@@ -1052,6 +744,8 @@ impl Search {
                     self.templates.clear();
                     self.allocations.clear();
                     self.m.reused_nodes = self.paths.len();
+                    self.m.reused_opponent_nodes = self.op_paths.len();
+                    self.m.reused_world_states = states;
                     self.m.reused_root_visits = self.nodes[self.paths[&vec![]]].n;
                     self.m.reuse_statistics_reset = reset;
                     self.m.reset_reason = if reset {
@@ -1079,8 +773,17 @@ fn log_same(a: &Log, b: &Log, own: usize) -> bool {
         && a.vp == b.vp
         && (!(a.a.k == 5 || a.a.k == 7) || a.p != own || a.ch == b.ch)
 }
-fn same_logs(a: &[Log], b: &[Log], own: usize) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| log_same(a, b, own))
+pub(crate) fn same_logs(a: &Logs, b: &Logs, own: usize) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut ok = true;
+    a.for_each(|i, la| {
+        if ok && !log_same(la, b.get(i), own) {
+            ok = false;
+        }
+    });
+    ok
 }
 pub fn actual_chance(w: &World, a: Act, rng: &mut rng::Rng) -> (i32, Option<[i32; 2]>) {
     match a.k {
@@ -1154,5 +857,751 @@ fn repr_path(path: &TreePath) -> String {
         format!("({inner},)")
     } else {
         format!("({inner})")
+    }
+}
+
+pub enum StepOutcome {
+    NeedCandidate {
+        stepper: SearchStepper,
+        features: Vec<Vec<f32>>,
+    },
+    Done {
+        search: Search,
+        result: ResultData,
+    },
+}
+
+struct DescendState {
+    w: Arc<World>,
+    path: TreePath,
+    trace: Vec<(Option<usize>, usize, Key, Key)>,
+    rd: usize,
+    depth: usize,
+}
+
+enum DescendOutcome {
+    Finished,
+    NeedOwnLeaf {
+        w: Arc<World>,
+        path: TreePath,
+        trace: Vec<(Option<usize>, usize, Key, Key)>,
+        features: Vec<f32>,
+    },
+    NeedAdvOpp {
+        state: DescendState,
+        existing_ni: Option<usize>,
+        features: Vec<f32>,
+    },
+    NeedSelfOpp {
+        state: DescendState,
+        features: Vec<f32>,
+    },
+}
+
+enum StepperPhase {
+    Init,
+    WaitRootNode,
+    WaitRootPriors,
+    ReadyToSimulate {
+        belief: belief::Belief,
+        longest: f64,
+    },
+    WaitSingleOwnLeaf {
+        belief: belief::Belief,
+        longest: f64,
+        begin: Instant,
+        w: Arc<World>,
+        path: TreePath,
+        trace: Vec<(Option<usize>, usize, Key, Key)>,
+    },
+    WaitSingleAdvOpp {
+        belief: belief::Belief,
+        longest: f64,
+        begin: Instant,
+        state: DescendState,
+        existing_ni: Option<usize>,
+    },
+    WaitSingleSelfOpp {
+        belief: belief::Belief,
+        longest: f64,
+        begin: Instant,
+        state: DescendState,
+    },
+    WaitWaveOpp {
+        belief: belief::Belief,
+        longest: f64,
+        begin: Instant,
+        wave_target: usize,
+        lane_idx: usize,
+        pending: Vec<(Arc<World>, TreePath, Vec<(Option<usize>, usize, Key, Key)>)>,
+        features_batch: Vec<Vec<f32>>,
+        state: DescendState,
+    },
+    WaitWaveBatch {
+        belief: belief::Belief,
+        longest: f64,
+        begin: Instant,
+        pending: Vec<(Arc<World>, TreePath, Vec<(Option<usize>, usize, Key, Key)>)>,
+    },
+}
+
+pub struct SearchStepper {
+    search: Search,
+    root: Arc<World>,
+    seed: u64,
+    o: Options,
+    noise_override: Option<Vec<f64>>,
+    audit_allocations: bool,
+    start: Instant,
+    lanes: usize,
+    phase: StepperPhase,
+}
+
+impl SearchStepper {
+    pub fn new(
+        mut search: Search,
+        seed: u64,
+        o: &Options,
+        noise_override: Option<&[f64]>,
+        audit_allocations: bool,
+    ) -> Self {
+        let start = Instant::now();
+        let previous = search.m.clone();
+        search.m = Metrics::default();
+        search.m.reused_nodes = previous.reused_nodes;
+        search.m.reused_opponent_nodes = previous.reused_opponent_nodes;
+        search.m.reused_world_states = previous.reused_world_states;
+        search.m.reused_root_visits = previous.reused_root_visits;
+        search.m.reuse_statistics_reset = previous.reuse_statistics_reset;
+        search.m.reset_reason = previous.reset_reason;
+        search.chance = rng::Rng::new(rng::named(seed, "chance"));
+        search.world = rng::Rng::new(rng::named(seed, "worlds"));
+        search.opponent = rng::Rng::new(rng::named(seed, "opponent"));
+        search.templates.clear();
+        search.allocations.clear();
+        let root = search.root.clone();
+        let lanes = if o.mcts_opponent == MctsOpponent::AdversarialPuct {
+            1
+        } else {
+            o.lanes.max(1)
+        };
+        Self {
+            search,
+            root,
+            seed,
+            o: o.clone(),
+            noise_override: noise_override.map(|s| s.to_vec()),
+            audit_allocations,
+            start,
+            lanes,
+            phase: StepperPhase::Init,
+        }
+    }
+
+    pub fn add_inference_seconds(&mut self, secs: f64) {
+        self.search.m.inference_seconds += secs;
+    }
+
+    fn take_one(reply: Option<Vec<(Vec<f32>, f32)>>) -> Result<(Vec<f32>, f32), String> {
+        reply
+            .and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) })
+            .ok_or_else(|| "Missing candidate inference reply".to_string())
+    }
+
+    fn step_descent(
+        &mut self,
+        enc: &Encoder,
+        models: &mut Models,
+        mut st: DescendState,
+        use_vl: bool,
+    ) -> Result<DescendOutcome, String> {
+        loop {
+            if st.w.e.state.current == self.search.own && st.w.e.winner() < 0 {
+                self.search
+                    .positions
+                    .entry(st.path.clone())
+                    .or_insert_with(|| st.w.clone());
+            }
+            self.search.m.max_action_depth = self.search.m.max_action_depth.max(st.depth);
+            self.search.m.max_root_depth = self.search.m.max_root_depth.max(st.rd);
+            self.search.m.max_completed_turn_depth = self
+                .search
+                .m
+                .max_completed_turn_depth
+                .max(st.w.e.state.turns - self.search.root.e.state.turns);
+            let winner = st.w.e.winner();
+            if winner >= 0 {
+                let v = (winner as usize == self.search.own) as u8 as f64;
+                self.search.backup_trace(&st.trace, v, self.o.virtual_loss, use_vl);
+                return Ok(DescendOutcome::Finished);
+            }
+            if st.depth >= 128 {
+                self.search.m.capped_simulations += 1;
+                self.search.backup_trace(&st.trace, 0.5, self.o.virtual_loss, use_vl);
+                return Ok(DescendOutcome::Finished);
+            }
+            let (edge, node, next_rd) = if st.w.e.state.current == self.search.own {
+                let ni = if let Some(&ni) = self.search.paths.get(&st.path) {
+                    ni
+                } else {
+                    let feature_start = Instant::now();
+                    let features = st.w.features(enc, st.w.e.state.current).clone();
+                    self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+                    return Ok(DescendOutcome::NeedOwnLeaf {
+                        w: st.w,
+                        path: st.path,
+                        trace: st.trace,
+                        features,
+                    });
+                };
+                self.search.check_own_node_invariants(&st.w, enc, ni);
+                let ei = self.search.pick_own_puct_edge(&st.w, enc, ni, use_vl);
+                if use_vl {
+                    self.search.edges[ei].vl_n += 1;
+                    self.search.edges[ei].vl_loss += self.o.virtual_loss;
+                    self.search.nodes[ni].vl_n += 1;
+                }
+                (ei, Some(ni), st.rd + 1)
+            } else if self.o.mcts_opponent == MctsOpponent::AdversarialPuct {
+                if st.w.e.actions.len() == 1 {
+                    let a = st.w.e.actions[0];
+                    let aid = enc.id(&st.w.e, a);
+                    let k = (st.path.clone(), aid);
+                    let ei = if let Some(&i) = self.search.op_edges.get(&k) {
+                        i
+                    } else {
+                        let i = self.search.edge(a, 1.0);
+                        self.search.op_edges.insert(k, i);
+                        i
+                    };
+                    (ei, None, st.rd)
+                } else if let Some(&ni) = self.search.op_paths.get(&st.path) {
+                    let existing_acts: Vec<Act> = self.search.nodes[ni]
+                        .edges
+                        .iter()
+                        .map(|&i| self.search.edges[i].a)
+                        .collect();
+                    if st.w.e.actions.iter().any(|a| !existing_acts.contains(a)) {
+                        let actor = st.w.e.state.current;
+                        let feature_start = Instant::now();
+                        let features = st.w.features(enc, actor).clone();
+                        self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+                        return Ok(DescendOutcome::NeedAdvOpp {
+                            state: st,
+                            existing_ni: Some(ni),
+                            features,
+                        });
+                    }
+                    let ei = self.search.pick_adv_opp_edge(&st.w, enc, ni);
+                    (ei, Some(ni), st.rd)
+                } else {
+                    let actor = st.w.e.state.current;
+                    let feature_start = Instant::now();
+                    let features = st.w.features(enc, actor).clone();
+                    self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+                    return Ok(DescendOutcome::NeedAdvOpp {
+                        state: st,
+                        existing_ni: None,
+                        features,
+                    });
+                }
+            } else if st.w.e.actions.len() == 1 {
+                let a = st.w.e.actions[0];
+                let aid = enc.id(&st.w.e, a);
+                let k = (st.path.clone(), aid);
+                let ei = if let Some(&i) = self.search.op_edges.get(&k) {
+                    i
+                } else {
+                    let i = self.search.edge(a, 1.0);
+                    self.search.op_edges.insert(k, i);
+                    i
+                };
+                (ei, None, st.rd)
+            } else if self.o.mcts_opponent == MctsOpponent::FrozenMlp {
+                let (pred, _) = self.search.prediction(&st.w, enc, models, true)?;
+                let ei = self.search.sample_opp_edge(&st.path, pred);
+                (ei, None, st.rd)
+            } else {
+                let actor = st.w.e.state.current;
+                let feature_start = Instant::now();
+                let features = st.w.features(enc, actor).clone();
+                self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+                return Ok(DescendOutcome::NeedSelfOpp {
+                    state: st,
+                    features,
+                });
+            };
+            st = self.advance_descent(enc, st, edge, node, next_rd);
+        }
+    }
+
+    fn advance_descent(
+        &mut self,
+        enc: &Encoder,
+        mut st: DescendState,
+        edge: usize,
+        node: Option<usize>,
+        next_rd: usize,
+    ) -> DescendState {
+        let (child, wk, ck, denied) = self.search.step(&st.w, edge);
+        st.path.push(Step {
+            id: enc.id(&st.w.e, self.search.edges[edge].a),
+            visible: visible(&child, enc, self.search.own),
+            denied,
+        });
+        st.trace.push((node, edge, wk, ck));
+        DescendState {
+            w: child,
+            path: st.path,
+            trace: st.trace,
+            rd: next_rd,
+            depth: st.depth + 1,
+        }
+    }
+
+    fn emit_root_priors(mut self, enc: &Encoder) -> StepOutcome {
+        let feature_start = Instant::now();
+        let features = self.root.features(enc, self.root.e.state.current).clone();
+        self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+        self.search.m.evaluations += 1;
+        self.phase = StepperPhase::WaitRootPriors;
+        StepOutcome::NeedCandidate {
+            stepper: self,
+            features: vec![features],
+        }
+    }
+
+    pub fn step(
+        mut self,
+        enc: &Encoder,
+        models: &mut Models,
+        mut reply: Option<Vec<(Vec<f32>, f32)>>,
+    ) -> Result<StepOutcome, String> {
+        loop {
+            let phase = std::mem::replace(&mut self.phase, StepperPhase::Init);
+            match phase {
+                StepperPhase::Init => {
+                    if self.root.e.actions.len() == 1 {
+                        let id = enc.id(&self.root.e, self.root.e.actions[0]);
+                        let result = ResultData {
+                            action_id: id,
+                            sampled_action: id,
+                            statistics: vec![],
+                            metrics: self.search.m.clone(),
+                            allocations: vec![],
+                        };
+                        return Ok(StepOutcome::Done {
+                            search: self.search,
+                            result,
+                        });
+                    }
+                    if self.search.paths.contains_key(&vec![]) {
+                        return Ok(self.emit_root_priors(enc));
+                    }
+                    let feature_start = Instant::now();
+                    let features = self.root.features(enc, self.root.e.state.current).clone();
+                    self.search.m.feature_seconds += feature_start.elapsed().as_secs_f64();
+                    self.search.m.evaluations += 1;
+                    self.phase = StepperPhase::WaitRootNode;
+                    return Ok(StepOutcome::NeedCandidate {
+                        stepper: self,
+                        features: vec![features],
+                    });
+                }
+                StepperPhase::WaitRootNode => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, _) = self.search.process_prediction(&self.root, enc, scores, raw_val)?;
+                    let ni = self.search.expand_node(&self.root, enc, pred);
+                    self.search.paths.insert(vec![], ni);
+                    return Ok(self.emit_root_priors(enc));
+                }
+                StepperPhase::WaitRootPriors => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, _) = self.search.process_prediction(&self.root, enc, scores, raw_val)?;
+                    let ni = self.search.paths[&vec![]];
+                    let noise = if !self.o.noise {
+                        vec![0.; pred.len()]
+                    } else if let Some(x) = self.noise_override.as_ref() {
+                        assert_eq!(x.len(), pred.len());
+                        x.clone()
+                    } else {
+                        pcg::Pcg::new(rng::named(self.seed, "root-noise")).dirichlet(pred.len())
+                    };
+                    self.search.m.root_noise = noise.clone();
+                    for ((_, id, p), n) in pred.iter().zip(noise) {
+                        let ei = *self.search.nodes[ni]
+                            .edges
+                            .iter()
+                            .find(|&&i| enc.id(&self.root.e, self.search.edges[i].a) == *id)
+                            .unwrap();
+                        self.search.edges[ei].prior = if self.o.noise { 0.75 * p + 0.25 * n } else { *p };
+                    }
+                    let posterior_start = Instant::now();
+                    let belief = belief::Belief::new(&self.root, self.search.own);
+                    self.search.m.posterior_seconds += posterior_start.elapsed().as_secs_f64();
+                    self.search.m.belief_evidence = belief.evidence;
+                    self.phase = StepperPhase::ReadyToSimulate {
+                        belief,
+                        longest: 0.0,
+                    };
+                }
+                StepperPhase::ReadyToSimulate {
+                    mut belief,
+                    longest,
+                } => {
+                    if self.o.simulations.is_some_and(|n| self.search.m.simulations >= n)
+                        || self
+                            .o
+                            .seconds
+                            .is_some_and(|s| self.start.elapsed().as_secs_f64() + 1.25 * longest >= s)
+                    {
+                        if self.lanes > 1 {
+                            assert!(self.search.edges.iter().all(|e| e.vl_n == 0));
+                            assert!(self.search.nodes.iter().all(|n| n.vl_n == 0));
+                        }
+                        let result = self.search.finalize(enc, self.start, &self.root);
+                        return Ok(StepOutcome::Done {
+                            search: self.search,
+                            result,
+                        });
+                    }
+                    let begin = Instant::now();
+                    if self.lanes == 1 {
+                        let w = self.search.sample_world(&mut belief, &self.root, self.audit_allocations);
+                        let st = DescendState {
+                            w,
+                            path: vec![],
+                            trace: vec![],
+                            rd: 0,
+                            depth: 0,
+                        };
+                        if let Some(features) = self.finish_single_descent(
+                            enc,
+                            models,
+                            belief,
+                            longest,
+                            begin,
+                            st,
+                        )? {
+                            return Ok(StepOutcome::NeedCandidate {
+                                stepper: self,
+                                features,
+                            });
+                        }
+                    } else {
+                        let remaining = self
+                            .o
+                            .simulations
+                            .map(|n| n.saturating_sub(self.search.m.simulations))
+                            .unwrap_or(self.lanes);
+                        let wave_target = self.lanes.min(remaining);
+                        let pending = Vec::with_capacity(wave_target);
+                        let features_batch = Vec::with_capacity(wave_target);
+                        if let Some(features) = self.run_wave(
+                            enc,
+                            models,
+                            belief,
+                            longest,
+                            begin,
+                            wave_target,
+                            0,
+                            pending,
+                            features_batch,
+                            None,
+                        )? {
+                            return Ok(StepOutcome::NeedCandidate {
+                                stepper: self,
+                                features,
+                            });
+                        }
+                    }
+                }
+                StepperPhase::WaitSingleOwnLeaf {
+                    belief,
+                    mut longest,
+                    begin,
+                    w,
+                    path,
+                    trace,
+                } => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, v) = self.search.process_prediction(&w, enc, scores, raw_val)?;
+                    let ni = self.search.expand_node(&w, enc, pred);
+                    self.search.paths.insert(path, ni);
+                    self.search.nodes[ni].n += 1;
+                    self.search.backup_trace(&trace, v, 0.0, false);
+                    self.search.m.simulations += 1;
+                    longest = longest.max(begin.elapsed().as_secs_f64());
+                    self.phase = StepperPhase::ReadyToSimulate { belief, longest };
+                }
+                StepperPhase::WaitSingleAdvOpp {
+                    belief,
+                    longest,
+                    begin,
+                    state,
+                    existing_ni,
+                } => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, _) = self.search.process_prediction(&state.w, enc, scores, raw_val)?;
+                    let ni = if let Some(ni) = existing_ni {
+                        let existing_acts: Vec<Act> = self.search.nodes[ni]
+                            .edges
+                            .iter()
+                            .map(|&i| self.search.edges[i].a)
+                            .collect();
+                        for (a, _, p) in pred {
+                            if !existing_acts.contains(&a) {
+                                let ei = self.search.edge(a, p);
+                                self.search.nodes[ni].edges.push(ei);
+                            }
+                        }
+                        ni
+                    } else {
+                        let ni = self.search.expand_node(&state.w, enc, pred);
+                        self.search.op_paths.insert(state.path.clone(), ni);
+                        ni
+                    };
+                    let ei = self.search.pick_adv_opp_edge(&state.w, enc, ni);
+                    let rd = state.rd;
+                    let next_st = self.advance_descent(enc, state, ei, Some(ni), rd);
+                    if let Some(features) = self.finish_single_descent(
+                        enc,
+                        models,
+                        belief,
+                        longest,
+                        begin,
+                        next_st,
+                    )? {
+                        return Ok(StepOutcome::NeedCandidate {
+                            stepper: self,
+                            features,
+                        });
+                    }
+                }
+                StepperPhase::WaitSingleSelfOpp {
+                    belief,
+                    longest,
+                    begin,
+                    state,
+                } => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, _) = self.search.process_prediction(&state.w, enc, scores, raw_val)?;
+                    let ei = self.search.sample_opp_edge(&state.path, pred);
+                    let rd = state.rd;
+                    let next_st = self.advance_descent(enc, state, ei, None, rd);
+                    if let Some(features) = self.finish_single_descent(
+                        enc,
+                        models,
+                        belief,
+                        longest,
+                        begin,
+                        next_st,
+                    )? {
+                        return Ok(StepOutcome::NeedCandidate {
+                            stepper: self,
+                            features,
+                        });
+                    }
+                }
+                StepperPhase::WaitWaveOpp {
+                    belief,
+                    longest,
+                    begin,
+                    wave_target,
+                    lane_idx,
+                    pending,
+                    features_batch,
+                    state,
+                } => {
+                    let (scores, raw_val) = Self::take_one(reply.take())?;
+                    let (pred, _) = self.search.process_prediction(&state.w, enc, scores, raw_val)?;
+                    let ei = self.search.sample_opp_edge(&state.path, pred);
+                    let rd = state.rd;
+                    let next_st = self.advance_descent(enc, state, ei, None, rd);
+                    if let Some(features) = self.run_wave(
+                        enc,
+                        models,
+                        belief,
+                        longest,
+                        begin,
+                        wave_target,
+                        lane_idx,
+                        pending,
+                        features_batch,
+                        Some(next_st),
+                    )? {
+                        return Ok(StepOutcome::NeedCandidate {
+                            stepper: self,
+                            features,
+                        });
+                    }
+                }
+                StepperPhase::WaitWaveBatch {
+                    belief,
+                    mut longest,
+                    begin,
+                    pending,
+                } => {
+                    let outputs = reply
+                        .take()
+                        .ok_or_else(|| "Missing candidate batch inference reply".to_string())?;
+                    for ((lw, path, trace), (scores, raw_val)) in
+                        pending.into_iter().zip(outputs.into_iter())
+                    {
+                        let (pred, v) = self.search.process_prediction(&lw, enc, scores, raw_val)?;
+                        if let Some(&existing_ni) = self.search.paths.get(&path) {
+                            self.search.nodes[existing_ni].n += 1;
+                        } else {
+                            let new_ni = self.search.expand_node(&lw, enc, pred);
+                            self.search.nodes[new_ni].n = 1;
+                            self.search.paths.insert(path, new_ni);
+                        }
+                        self.search.backup_trace(&trace, v, self.o.virtual_loss, true);
+                        self.search.m.simulations += 1;
+                    }
+                    longest = longest.max(begin.elapsed().as_secs_f64());
+                    self.phase = StepperPhase::ReadyToSimulate { belief, longest };
+                }
+            }
+        }
+    }
+
+    fn finish_single_descent(
+        &mut self,
+        enc: &Encoder,
+        models: &mut Models,
+        belief: belief::Belief,
+        mut longest: f64,
+        begin: Instant,
+        st: DescendState,
+    ) -> Result<Option<Vec<Vec<f32>>>, String> {
+        match self.step_descent(enc, models, st, false)? {
+            DescendOutcome::Finished => {
+                self.search.m.simulations += 1;
+                longest = longest.max(begin.elapsed().as_secs_f64());
+                self.phase = StepperPhase::ReadyToSimulate { belief, longest };
+                Ok(None)
+            }
+            DescendOutcome::NeedOwnLeaf {
+                w,
+                path,
+                trace,
+                features,
+            } => {
+                self.search.m.evaluations += 1;
+                self.phase = StepperPhase::WaitSingleOwnLeaf {
+                    belief,
+                    longest,
+                    begin,
+                    w,
+                    path,
+                    trace,
+                };
+                Ok(Some(vec![features]))
+            }
+            DescendOutcome::NeedAdvOpp {
+                state,
+                existing_ni,
+                features,
+            } => {
+                self.search.m.evaluations += 1;
+                self.phase = StepperPhase::WaitSingleAdvOpp {
+                    belief,
+                    longest,
+                    begin,
+                    state,
+                    existing_ni,
+                };
+                Ok(Some(vec![features]))
+            }
+            DescendOutcome::NeedSelfOpp { state, features } => {
+                self.search.m.evaluations += 1;
+                self.phase = StepperPhase::WaitSingleSelfOpp {
+                    belief,
+                    longest,
+                    begin,
+                    state,
+                };
+                Ok(Some(vec![features]))
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_wave(
+        &mut self,
+        enc: &Encoder,
+        models: &mut Models,
+        mut belief: belief::Belief,
+        mut longest: f64,
+        begin: Instant,
+        wave_target: usize,
+        mut lane_idx: usize,
+        mut pending: Vec<(Arc<World>, TreePath, Vec<(Option<usize>, usize, Key, Key)>)>,
+        mut features_batch: Vec<Vec<f32>>,
+        mut resumed_state: Option<DescendState>,
+    ) -> Result<Option<Vec<Vec<f32>>>, String> {
+        while lane_idx < wave_target {
+            let st = if let Some(s) = resumed_state.take() {
+                s
+            } else {
+                let w = self
+                    .search
+                    .sample_world(&mut belief, &self.root, self.audit_allocations);
+                DescendState {
+                    w,
+                    path: vec![],
+                    trace: vec![],
+                    rd: 0,
+                    depth: 0,
+                }
+            };
+            match self.step_descent(enc, models, st, true)? {
+                DescendOutcome::Finished => {
+                    self.search.m.simulations += 1;
+                    lane_idx += 1;
+                }
+                DescendOutcome::NeedOwnLeaf {
+                    w,
+                    path,
+                    trace,
+                    features,
+                } => {
+                    pending.push((w, path, trace));
+                    features_batch.push(features);
+                    lane_idx += 1;
+                }
+                DescendOutcome::NeedSelfOpp { state, features } => {
+                    self.search.m.evaluations += 1;
+                    self.phase = StepperPhase::WaitWaveOpp {
+                        belief,
+                        longest,
+                        begin,
+                        wave_target,
+                        lane_idx,
+                        pending,
+                        features_batch,
+                        state,
+                    };
+                    return Ok(Some(vec![features]));
+                }
+                DescendOutcome::NeedAdvOpp { .. } => {
+                    return Err("AdversarialPuct requires lanes == 1".to_string());
+                }
+            }
+        }
+        if !pending.is_empty() {
+            self.search.m.evaluations += pending.len();
+            self.phase = StepperPhase::WaitWaveBatch {
+                belief,
+                longest,
+                begin,
+                pending,
+            };
+            return Ok(Some(features_batch));
+        }
+        longest = longest.max(begin.elapsed().as_secs_f64());
+        self.phase = StepperPhase::ReadyToSimulate { belief, longest };
+        Ok(None)
     }
 }

@@ -23,6 +23,7 @@ struct Job {
     initial: Engine,
     names: Vec<String>,
     static_features: Vec<f64>,
+    #[allow(dead_code)]
     coordinates: Vec<[i32; 3]>,
     tile_ids: Vec<usize>,
     colors: Vec<String>,
@@ -44,160 +45,280 @@ impl History {
         }
     }
 }
+struct FeatureIndices {
+    p_scalars: [[usize; 11]; 2],
+    p_played: [[usize; 4]; 2],
+    p0_actual_vps: usize,
+    p0_used_dev: usize,
+    p0_hand: [usize; 5],
+    p1_inferred_hand: [usize; 5],
+    bank_res: [usize; 5],
+    p0_dev_in_hand: [usize; 5],
+    p0_new_dev: [usize; 5],
+    p0_older_dev: [usize; 5],
+    p0_dev_owned_start: [usize; 4],
+    p0_dev_playable: [usize; 4],
+    p1_new_devs: usize,
+    p1_older_devs: usize,
+    nodes: [[[usize; 2]; 2]; 54],
+    edges: Vec<[usize; 2]>,
+    tiles_robber: Vec<usize>,
+    bank_dev_cards: usize,
+    is_discarding: usize,
+    is_moving_robber: usize,
+    actor_is_blue: usize,
+    observer_is_blue: usize,
+    decision_actor_is_self: usize,
+    turn_owner_is_self: usize,
+    is_setup: usize,
+    is_free_road: usize,
+    free_roads_available: usize,
+    is_moving_knight: usize,
+    discard_remaining_self: usize,
+    discard_remaining_other: usize,
+    phases: [usize; 5],
+}
+
 struct Encoder {
     job: Arc<Job>,
-    indices: HashMap<String, usize>,
+    base_features: Vec<f32>,
+    is_proba: Vec<bool>,
+    is_blue: Vec<bool>,
+    idx: FeatureIndices,
+    action_map: HashMap<(i32, i32, i32, i32), usize>,
 }
+
+fn feature_idx(map: &HashMap<&str, usize>, name: &str) -> usize {
+    *map.get(name)
+        .unwrap_or_else(|| panic!("Unknown feature {name}"))
+}
+
 impl Encoder {
     fn new(j: Arc<Job>) -> Self {
-        Self {
-            indices: j
-                .names
-                .iter()
-                .enumerate()
-                .map(|(i, n)| (n.clone(), i))
-                .collect(),
-            job: j,
-        }
-    }
-    fn features(&self, e: &Engine, h: &History, own: usize) -> Vec<f32> {
-        let mut x: Vec<f32> = self.job.static_features.iter().map(|&x| x as f32).collect();
-        let s = &e.state;
-        let other = 1 - own;
-        let mut put = |n: String, v: f32| {
-            let i = self
-                .indices
-                .get(&n)
-                .unwrap_or_else(|| panic!("Unknown feature {n}"));
-            x[*i] = v;
-        };
-        for (rel, p) in [own, other].iter().copied().enumerate() {
-            let q = &s.players[p];
-            let pre = format!("P{rel}_");
-            for (k, v) in [
-                ("PUBLIC_VPS", q.vp as f32),
-                ("HAS_ARMY", q.has_army as u8 as f32),
-                ("HAS_ROAD", q.has_road as u8 as f32),
-                ("HAS_ROLLED", q.rolled as u8 as f32),
-                ("ROADS_LEFT", q.pieces[0] as f32),
-                ("SETTLEMENTS_LEFT", q.pieces[1] as f32),
-                ("CITIES_LEFT", q.pieces[2] as f32),
-                ("LONGEST_ROAD_LENGTH", q.road_length as f32),
-                ("NUM_RESOURCES_IN_HAND", q.hand.iter().sum::<i32>() as f32),
-                ("NUM_DEVS_IN_HAND", q.dev.iter().sum::<i32>() as f32),
-                ("DEV_PURCHASES", h.buys[p] as f32),
-            ] {
-                put(format!("{pre}{k}"), v);
-            }
-            for (i, d) in D.iter().enumerate() {
-                if i != 4 {
-                    put(format!("{pre}{d}_PLAYED"), q.played[i] as f32);
-                }
-            }
-        }
-        let q = &s.players[own];
-        put("P0_ACTUAL_VPS".into(), q.actual as f32);
-        put(
-            "P0_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN".into(),
-            q.used_dev as u8 as f32,
-        );
-        for (i, r) in R.iter().enumerate() {
-            put(format!("P0_{r}_IN_HAND"), q.hand[i] as f32);
-            put(
-                format!("P1_INFERRED_{r}_IN_HAND"),
-                (19 - s.bank[i] - q.hand[i]) as f32,
-            );
-            put(format!("BANK_{r}"), s.bank[i] as f32);
-        }
-        for (i, d) in D.iter().enumerate() {
-            put(format!("P0_{d}_IN_HAND"), q.dev[i] as f32);
-            put(format!("P0_NEW_{d}"), h.new[own][i] as f32);
-            put(format!("P0_OLDER_{d}"), (q.dev[i] - h.new[own][i]) as f32);
-            if i != 4 {
-                put(format!("P0_{d}_OWNED_AT_START"), q.owned[i] as u8 as f32);
-                let kind = [8, 10, 9, 11][i];
-                put(
-                    format!("P0_{d}_PLAYABLE"),
-                    (s.current == own && e.actions.iter().any(|a| a.k == kind)) as u8 as f32,
-                );
-            }
-        }
-        let new = s.players[other].dev.iter().sum::<i32>();
-        put(
-            "P1_NEW_DEVS".into(),
-            h.new[other].iter().sum::<i32>() as f32,
-        );
-        put(
-            "P1_OLDER_DEVS".into(),
-            (new - h.new[other].iter().sum::<i32>()) as f32,
-        );
-        for n in 0..54 {
-            for rel in 0..2 {
-                for k in ["SETTLEMENT", "CITY"] {
-                    let p = if rel == 0 { own } else { other };
-                    let kind = if k == "CITY" { 2 } else { 1 };
-                    put(
-                        format!("NODE{n}_P{rel}_{k}"),
-                        (s.buildings[n] == [p as i32, kind]) as u8 as f32,
-                    );
-                }
-            }
-        }
-        for (i, [a, b]) in e.map.edges.iter().enumerate() {
-            for rel in 0..2 {
-                let p = if rel == 0 { own } else { other };
-                put(
-                    format!("EDGE({a}, {b})_P{rel}_ROAD"),
-                    (s.roads[i] == p as i32) as u8 as f32,
-                );
-            }
-        }
-        for (t, id) in self.job.tile_ids.iter().enumerate() {
-            put(format!("TILE{id}_HAS_ROBBER"), (t == s.robber) as u8 as f32);
-        }
-        for (k, v) in [
-            ("BANK_DEV_CARDS", s.deck.len() as f32),
-            (
-                "IS_DISCARDING",
-                (s.current == own && e.actions.iter().any(|a| a.k == 6)) as u8 as f32,
-            ),
-            (
-                "IS_MOVING_ROBBER",
-                (s.current == own && e.actions.iter().any(|a| a.k == 7)) as u8 as f32,
-            ),
-            (
-                "ACTOR_IS_BLUE",
-                (self.job.colors[s.current] == "BLUE") as u8 as f32,
-            ),
-            (
-                "OBSERVER_IS_BLUE",
-                (self.job.colors[own] == "BLUE") as u8 as f32,
-            ),
-            ("DECISION_ACTOR_IS_SELF", (s.current == own) as u8 as f32),
-            ("TURN_OWNER_IS_SELF", (s.turn == own) as u8 as f32),
-            ("IS_SETUP", s.initial as u8 as f32),
-            ("IS_FREE_ROAD", s.road_building as u8 as f32),
-            ("FREE_ROADS_AVAILABLE", s.free_roads as f32),
-            ("IS_MOVING_KNIGHT", s.moving as u8 as f32),
-            ("DISCARD_REMAINING_SELF", s.discards[own] as f32),
-            ("DISCARD_REMAINING_OTHER", s.discards[other] as f32),
-        ] {
-            put(k.into(), v);
-        }
-        for (i, n) in [
+        let map: HashMap<&str, usize> = j
+            .names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
+        let get = |name: &str| feature_idx(&map, name);
+
+        let scalar_names = [
+            "PUBLIC_VPS",
+            "HAS_ARMY",
+            "HAS_ROAD",
+            "HAS_ROLLED",
+            "ROADS_LEFT",
+            "SETTLEMENTS_LEFT",
+            "CITIES_LEFT",
+            "LONGEST_ROAD_LENGTH",
+            "NUM_RESOURCES_IN_HAND",
+            "NUM_DEVS_IN_HAND",
+            "DEV_PURCHASES",
+        ];
+        let p_scalars = std::array::from_fn(|rel| {
+            std::array::from_fn(|k| get(&format!("P{rel}_{}", scalar_names[k])))
+        });
+        let p_played = std::array::from_fn(|rel| {
+            std::array::from_fn(|i| get(&format!("P{rel}_{}_PLAYED", D[i])))
+        });
+        let p0_hand = std::array::from_fn(|i| get(&format!("P0_{}_IN_HAND", R[i])));
+        let p1_inferred_hand =
+            std::array::from_fn(|i| get(&format!("P1_INFERRED_{}_IN_HAND", R[i])));
+        let bank_res = std::array::from_fn(|i| get(&format!("BANK_{}", R[i])));
+        let p0_dev_in_hand = std::array::from_fn(|i| get(&format!("P0_{}_IN_HAND", D[i])));
+        let p0_new_dev = std::array::from_fn(|i| get(&format!("P0_NEW_{}", D[i])));
+        let p0_older_dev = std::array::from_fn(|i| get(&format!("P0_OLDER_{}", D[i])));
+        let p0_dev_owned_start =
+            std::array::from_fn(|i| get(&format!("P0_{}_OWNED_AT_START", D[i])));
+        let p0_dev_playable = std::array::from_fn(|i| get(&format!("P0_{}_PLAYABLE", D[i])));
+        let nodes = std::array::from_fn(|n| {
+            std::array::from_fn(|rel| {
+                [
+                    get(&format!("NODE{n}_P{rel}_SETTLEMENT")),
+                    get(&format!("NODE{n}_P{rel}_CITY")),
+                ]
+            })
+        });
+        let edges = j
+            .initial
+            .map
+            .edges
+            .iter()
+            .map(|&[a, b]| {
+                [
+                    get(&format!("EDGE({a}, {b})_P0_ROAD")),
+                    get(&format!("EDGE({a}, {b})_P1_ROAD")),
+                ]
+            })
+            .collect();
+        let tiles_robber = j
+            .tile_ids
+            .iter()
+            .map(|id| get(&format!("TILE{id}_HAS_ROBBER")))
+            .collect();
+        let phase_names = [
             "BUILD_INITIAL_SETTLEMENT",
             "BUILD_INITIAL_ROAD",
             "PLAY_TURN",
             "MOVE_ROBBER",
             "DISCARD",
-        ]
-        .iter()
-        .enumerate()
-        {
-            put(format!("PHASE_{n}"), (s.prompt == i) as u8 as f32);
+        ];
+        let phases = std::array::from_fn(|i| get(&format!("PHASE_{}", phase_names[i])));
+
+        let idx = FeatureIndices {
+            p_scalars,
+            p_played,
+            p0_actual_vps: get("P0_ACTUAL_VPS"),
+            p0_used_dev: get("P0_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN"),
+            p0_hand,
+            p1_inferred_hand,
+            bank_res,
+            p0_dev_in_hand,
+            p0_new_dev,
+            p0_older_dev,
+            p0_dev_owned_start,
+            p0_dev_playable,
+            p1_new_devs: get("P1_NEW_DEVS"),
+            p1_older_devs: get("P1_OLDER_DEVS"),
+            nodes,
+            edges,
+            tiles_robber,
+            bank_dev_cards: get("BANK_DEV_CARDS"),
+            is_discarding: get("IS_DISCARDING"),
+            is_moving_robber: get("IS_MOVING_ROBBER"),
+            actor_is_blue: get("ACTOR_IS_BLUE"),
+            observer_is_blue: get("OBSERVER_IS_BLUE"),
+            decision_actor_is_self: get("DECISION_ACTOR_IS_SELF"),
+            turn_owner_is_self: get("TURN_OWNER_IS_SELF"),
+            is_setup: get("IS_SETUP"),
+            is_free_road: get("IS_FREE_ROAD"),
+            free_roads_available: get("FREE_ROADS_AVAILABLE"),
+            is_moving_knight: get("IS_MOVING_KNIGHT"),
+            discard_remaining_self: get("DISCARD_REMAINING_SELF"),
+            discard_remaining_other: get("DISCARD_REMAINING_OTHER"),
+            phases,
+        };
+
+        let base_features = j.static_features.iter().map(|&x| x as f32).collect();
+        let is_proba = j.names.iter().map(|n| n.ends_with("_PROBA")).collect();
+        let is_blue = j.colors.iter().map(|c| c == "BLUE").collect();
+        let mut action_map = HashMap::with_capacity(j.action_ids.len());
+        for v in &j.action_ids {
+            action_map
+                .entry((v.action.k, v.action.a, v.action.b, v.rate))
+                .or_insert(v.id);
+        }
+
+        Self {
+            job: j,
+            base_features,
+            is_proba,
+            is_blue,
+            idx,
+            action_map,
+        }
+    }
+
+    fn features(&self, e: &Engine, h: &History, own: usize) -> Vec<f32> {
+        let mut x = self.base_features.clone();
+        let s = &e.state;
+        let other = 1 - own;
+        let idx = &self.idx;
+
+        for (rel, p) in [own, other].iter().copied().enumerate() {
+            let q = &s.players[p];
+            let ps = &idx.p_scalars[rel];
+            x[ps[0]] = q.vp as f32;
+            x[ps[1]] = q.has_army as u8 as f32;
+            x[ps[2]] = q.has_road as u8 as f32;
+            x[ps[3]] = q.rolled as u8 as f32;
+            x[ps[4]] = q.pieces[0] as f32;
+            x[ps[5]] = q.pieces[1] as f32;
+            x[ps[6]] = q.pieces[2] as f32;
+            x[ps[7]] = q.road_length as f32;
+            x[ps[8]] = q.hand.iter().sum::<i32>() as f32;
+            x[ps[9]] = q.dev.iter().sum::<i32>() as f32;
+            x[ps[10]] = h.buys[p] as f32;
+            for i in 0..4 {
+                x[idx.p_played[rel][i]] = q.played[i] as f32;
+            }
+        }
+
+        let mut playable_mask = 0u8;
+        let mut has_discard = false;
+        let mut has_robber = false;
+        if s.current == own {
+            for a in &e.actions {
+                match a.k {
+                    8 => playable_mask |= 1 << 0,
+                    10 => playable_mask |= 1 << 1,
+                    9 => playable_mask |= 1 << 2,
+                    11 => playable_mask |= 1 << 3,
+                    6 => has_discard = true,
+                    7 => has_robber = true,
+                    _ => {}
+                }
+            }
+        }
+
+        let q = &s.players[own];
+        x[idx.p0_actual_vps] = q.actual as f32;
+        x[idx.p0_used_dev] = q.used_dev as u8 as f32;
+        for i in 0..5 {
+            x[idx.p0_hand[i]] = q.hand[i] as f32;
+            x[idx.p1_inferred_hand[i]] = (19 - s.bank[i] - q.hand[i]) as f32;
+            x[idx.bank_res[i]] = s.bank[i] as f32;
+            x[idx.p0_dev_in_hand[i]] = q.dev[i] as f32;
+            x[idx.p0_new_dev[i]] = h.new[own][i] as f32;
+            x[idx.p0_older_dev[i]] = (q.dev[i] - h.new[own][i]) as f32;
+        }
+        for i in 0..4 {
+            x[idx.p0_dev_owned_start[i]] = q.owned[i] as u8 as f32;
+            x[idx.p0_dev_playable[i]] = ((playable_mask >> i) & 1) as f32;
+        }
+
+        let new = s.players[other].dev.iter().sum::<i32>();
+        let p1_new = h.new[other].iter().sum::<i32>();
+        x[idx.p1_new_devs] = p1_new as f32;
+        x[idx.p1_older_devs] = (new - p1_new) as f32;
+
+        for n in 0..54 {
+            let b = s.buildings[n];
+            for rel in 0..2 {
+                let p = if rel == 0 { own } else { other };
+                x[idx.nodes[n][rel][0]] = (b == [p as i32, 1]) as u8 as f32;
+                x[idx.nodes[n][rel][1]] = (b == [p as i32, 2]) as u8 as f32;
+            }
+        }
+        for (i, &[e0, e1]) in idx.edges.iter().enumerate() {
+            let r = s.roads[i];
+            x[e0] = (r == own as i32) as u8 as f32;
+            x[e1] = (r == other as i32) as u8 as f32;
+        }
+        for (t, &ti) in idx.tiles_robber.iter().enumerate() {
+            x[ti] = (t == s.robber) as u8 as f32;
+        }
+
+        x[idx.bank_dev_cards] = s.deck.len() as f32;
+        x[idx.is_discarding] = has_discard as u8 as f32;
+        x[idx.is_moving_robber] = has_robber as u8 as f32;
+        x[idx.actor_is_blue] = self.is_blue[s.current] as u8 as f32;
+        x[idx.observer_is_blue] = self.is_blue[own] as u8 as f32;
+        x[idx.decision_actor_is_self] = (s.current == own) as u8 as f32;
+        x[idx.turn_owner_is_self] = (s.turn == own) as u8 as f32;
+        x[idx.is_setup] = s.initial as u8 as f32;
+        x[idx.is_free_road] = s.road_building as u8 as f32;
+        x[idx.free_roads_available] = s.free_roads as f32;
+        x[idx.is_moving_knight] = s.moving as u8 as f32;
+        x[idx.discard_remaining_self] = s.discards[own] as f32;
+        x[idx.discard_remaining_other] = s.discards[other] as f32;
+        for (i, &pi) in idx.phases.iter().enumerate() {
+            x[pi] = (s.prompt == i) as u8 as f32;
         }
         x
     }
+
     fn id(&self, e: &Engine, a: Act) -> usize {
         let mut rate = 0;
         if a.k == 12 {
@@ -214,12 +335,10 @@ impl Encoder {
                 }
             }
         }
-        self.job
-            .action_ids
-            .iter()
-            .find(|v| v.action == a && v.rate == rate)
+        *self
+            .action_map
+            .get(&(a.k, a.a, a.b, rate))
             .expect("Action ID missing")
-            .id
     }
 }
 fn session(path: &Path) -> ort::Result<Session> {

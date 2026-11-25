@@ -231,12 +231,98 @@ enum CandidateProvider {
     Queue(batch_gpu::QueueClient),
 }
 
-fn play(
-    r: Request,
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("Worker thread panicked")
+        .to_string()
+}
+
+fn pool_thread_count(workers: usize) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8);
+    workers.max(1).min(cores.max(1))
+}
+
+fn ensure_models(
     cache: &mut HashMap<(String, String, u32), search::Models>,
+    keys: &[(String, String, u32); 2],
     provider: &CandidateProvider,
+    need_frozen: [bool; 2],
 ) -> Result<(), String> {
-    let game_id = r.game_id.clone();
+    if keys.iter().any(|key| !cache.contains_key(key)) && cache.len() + 2 > 4 {
+        cache.clear();
+    }
+    for (idx, key) in keys.iter().enumerate() {
+        if !cache.contains_key(key) {
+            let candidate = match provider {
+                CandidateProvider::Cpu => batch_gpu::CandidateModel::LocalCpu(
+                    session(Path::new(&key.0)).map_err(|e| e.to_string())?,
+                ),
+                CandidateProvider::Socket(client) => batch_gpu::CandidateModel::RemoteSocket {
+                    client: Arc::clone(client),
+                    model_id: key.2,
+                },
+                CandidateProvider::Queue(client) => batch_gpu::CandidateModel::InProcessQueue {
+                    client: client.clone(),
+                    model_path: key.0.clone(),
+                },
+            };
+            let opponent = if need_frozen[idx] {
+                Some(session(Path::new(&key.1)).map_err(|e| e.to_string())?)
+            } else {
+                None
+            };
+            cache.insert(
+                key.clone(),
+                search::Models {
+                    candidate,
+                    opponent,
+                },
+            );
+        } else if need_frozen[idx] {
+            let entry = cache.get_mut(key).unwrap();
+            if entry.opponent.is_none() {
+                entry.opponent = Some(session(Path::new(&key.1)).map_err(|e| e.to_string())?);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_seat_opts(r: &Request) -> [Options; 2] {
+    let default_opp = r.mcts_opponent.unwrap_or(if r.adversarial_puct {
+        MctsOpponent::AdversarialPuct
+    } else {
+        MctsOpponent::FrozenMlp
+    });
+    std::array::from_fn(|i| {
+        let mcts_opponent = if let Some(s) = r.seat_mcts_opponent {
+            s[i]
+        } else if let Some(s) = r.seat_adversarial_puct {
+            if s[i] {
+                MctsOpponent::AdversarialPuct
+            } else {
+                MctsOpponent::FrozenMlp
+            }
+        } else {
+            default_opp
+        };
+        Options {
+            simulations: r.seat_simulations.map(|s| s[i]).or(r.simulations),
+            seconds: r.seconds,
+            noise: !r.eval_mode,
+            lanes: r.lanes.unwrap_or(1).max(1),
+            virtual_loss: r.virtual_loss.unwrap_or(1.0),
+            mcts_opponent,
+        }
+    })
+}
+
+fn validate_request(r: &Request) -> Result<(), String> {
     if r.version != 1
         || r.simulations.is_some() == r.seconds.is_some()
         || r.simulations == Some(0)
@@ -258,65 +344,28 @@ fn play(
     if !t.logs.is_empty() || t.prefix != 0 {
         return Err("Production games must start at the initial state".into());
     }
+    Ok(())
+}
+
+fn play(
+    r: Request,
+    cache: &mut HashMap<(String, String, u32), search::Models>,
+    provider: &CandidateProvider,
+) -> Result<(), String> {
+    validate_request(&r)?;
+    let game_id = r.game_id.clone();
+    let t = &r.task;
     let model_ids = r.model_ids.unwrap_or([0, 0]);
     let keys = [
         (r.models[0].clone(), r.frozen.clone(), model_ids[0]),
         (r.models[1].clone(), r.frozen.clone(), model_ids[1]),
     ];
-    if keys.iter().any(|key| !cache.contains_key(key)) && cache.len() + 2 > 4 {
-        cache.clear();
-    }
-    for key in &keys {
-        if !cache.contains_key(key) {
-            let candidate = match provider {
-                CandidateProvider::Cpu => batch_gpu::CandidateModel::LocalCpu(
-                    session(Path::new(&key.0)).map_err(|e| e.to_string())?,
-                ),
-                CandidateProvider::Socket(client) => batch_gpu::CandidateModel::RemoteSocket {
-                    client: Arc::clone(client),
-                    model_id: key.2,
-                },
-                CandidateProvider::Queue(client) => batch_gpu::CandidateModel::InProcessQueue {
-                    client: client.clone(),
-                    model_path: key.0.clone(),
-                },
-            };
-            let opponent = session(Path::new(&key.1)).map_err(|e| e.to_string())?;
-            cache.insert(
-                key.clone(),
-                search::Models {
-                    candidate,
-                    opponent,
-                },
-            );
-        }
-    }
-    let default_opp = r.mcts_opponent.unwrap_or(if r.adversarial_puct {
-        MctsOpponent::AdversarialPuct
-    } else {
-        MctsOpponent::FrozenMlp
-    });
-    let seat_opts: [Options; 2] = std::array::from_fn(|i| {
-        let mcts_opponent = if let Some(s) = r.seat_mcts_opponent {
-            s[i]
-        } else if let Some(s) = r.seat_adversarial_puct {
-            if s[i] {
-                MctsOpponent::AdversarialPuct
-            } else {
-                MctsOpponent::FrozenMlp
-            }
-        } else {
-            default_opp
-        };
-        Options {
-            simulations: r.seat_simulations.map(|s| s[i]).or(r.simulations),
-            seconds: r.seconds,
-            noise: !r.eval_mode,
-            lanes: r.lanes.unwrap_or(1).max(1),
-            virtual_loss: r.virtual_loss.unwrap_or(1.0),
-            mcts_opponent,
-        }
-    });
+    let seat_opts = parse_seat_opts(&r);
+    let need_frozen = [
+        seat_opts[0].mcts_opponent == MctsOpponent::FrozenMlp,
+        seat_opts[1].mcts_opponent == MctsOpponent::FrozenMlp,
+    ];
+    ensure_models(cache, &keys, provider, need_frozen)?;
     let enc = Encoder::new(Arc::new(t.job.clone()));
     let mut w = Arc::new(task_world(t));
     if !w.e.state.friendly
@@ -375,7 +424,7 @@ fn play(
                 &opt,
                 None,
                 false,
-            );
+            )?;
             assert!(
                 opt.simulations.is_none() || result.metrics.simulations == opt.simulations.unwrap()
             );
@@ -414,7 +463,9 @@ fn play(
         };
         let id = enc.id(&w.e, a);
         let (chance, dice) = search::actual_chance(&w, a, &mut actual);
-        w = Arc::new(w.step(a, chance));
+        let mut next_w = w.step(a, chance);
+        next_w.logs.compact();
+        w = Arc::new(next_w);
         actions += 1;
         batch.push(serde_json::json!({"actor":actor,"action_id":id,"chance":chance,"dice":dice,"visits":visits,"metrics":metrics}));
         if batch.len() >= 10 {
@@ -490,88 +541,7 @@ pub fn serve(mode: ServeMode) -> Result<(), String> {
             wait_us,
             fixed_batch,
             streams,
-        } => {
-            let batch_queue =
-                batch_gpu::BatchQueue::start(backend, max_batch, wait_us, fixed_batch, streams);
-            let work_queue = Arc::new((Mutex::new((VecDeque::<Request>::new(), false)), Condvar::new()));
-
-            let mut handles = Vec::with_capacity(workers);
-            for i in 0..workers {
-                let wq = Arc::clone(&work_queue);
-                let client = batch_queue.client();
-                let handle = std::thread::Builder::new()
-                    .name(format!("catan-worker-{i}"))
-                    .stack_size(32 * 1024 * 1024)
-                    .spawn(move || {
-                        let mut models = HashMap::new();
-                        let provider = CandidateProvider::Queue(client);
-                        loop {
-                            let req = {
-                                let (lock, cvar) = &*wq;
-                                let mut guard = lock.lock().unwrap();
-                                while guard.0.is_empty() && !guard.1 {
-                                    guard = cvar.wait(guard).unwrap();
-                                }
-                                match guard.0.pop_front() {
-                                    Some(r) => r,
-                                    None => break,
-                                }
-                            };
-                            let gid = req.game_id.clone();
-                            if let Err(error) = play(req, &mut models, &provider) {
-                                let _ = emit(
-                                    serde_json::json!({"type":"error","error":error}),
-                                    gid.as_deref(),
-                                );
-                            }
-                        }
-                    })
-                    .map_err(|e| format!("Failed to spawn pool worker {i}: {e}"))?;
-                handles.push(handle);
-            }
-
-            emit(
-                serde_json::json!({"type":"ready","version":1,"backend":backend.as_str(),"threads":1,"workers":workers,"max_batch":max_batch,"wait_us":wait_us,"streams":streams}),
-                None,
-            )?;
-
-            for line in io::stdin().lock().lines() {
-                let line = line.map_err(|e| e.to_string())?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<Request>(&line) {
-                    Ok(req) => {
-                        let (lock, cvar) = &*work_queue;
-                        let mut guard = lock.lock().unwrap();
-                        guard.0.push_back(req);
-                        cvar.notify_one();
-                    }
-                    Err(e) => {
-                        emit(
-                            serde_json::json!({"type":"error","error":e.to_string()}),
-                            None,
-                        )?;
-                    }
-                }
-            }
-
-            {
-                let (lock, cvar) = &*work_queue;
-                let mut guard = lock.lock().unwrap();
-                guard.1 = true;
-                cvar.notify_all();
-            }
-            for h in handles {
-                let _ = h.join();
-            }
-            let metrics = batch_queue.shutdown();
-            emit(
-                serde_json::json!({"type":"pool_metrics","metrics":metrics}),
-                None,
-            )?;
-            Ok(())
-        }
+        } => serve_pool(workers, backend, max_batch, wait_us, fixed_batch, streams),
         ServeMode::BridgePool {
             workers,
             backend,
@@ -581,6 +551,505 @@ pub fn serve(mode: ServeMode) -> Result<(), String> {
             streams,
         } => serve_bridge_pool(workers, backend, max_batch, wait_us, fixed_batch, streams),
     }
+}
+
+struct PoolGame {
+    game_id: Option<String>,
+    task_id: String,
+    keys: [(String, String, u32); 2],
+    need_frozen: [bool; 2],
+    seat_opts: [Options; 2],
+    enc: Encoder,
+    w: Arc<World>,
+    actual: rng::Rng,
+    seeds: [rng::Rng; 2],
+    action_rng: [pcg::Pcg; 2],
+    seats: [Option<search::Search>; 2],
+    batch: Vec<serde_json::Value>,
+    actions: usize,
+    decisions: usize,
+    sims: usize,
+    started: Instant,
+    interrupted: bool,
+    deadline: f64,
+    stop_file: String,
+    max_turns: usize,
+    max_actions: usize,
+    eval_mode: bool,
+    setup_simulations: Option<usize>,
+    setup_temperature: Option<f64>,
+    active_decision: Option<ActiveDecision>,
+}
+
+struct ActiveDecision {
+    actor: usize,
+    opt_sims: Option<usize>,
+    stepper: search::SearchStepper,
+    infer_start: Option<Instant>,
+    reply: Option<Vec<(Vec<f32>, f32)>>,
+}
+
+enum PoolStep {
+    NeedEval {
+        model_path: String,
+        features: Vec<Vec<f32>>,
+    },
+    Finished,
+}
+
+impl PoolGame {
+    fn new(
+        r: Request,
+        cache: &mut HashMap<(String, String, u32), search::Models>,
+        provider: &CandidateProvider,
+    ) -> Result<Self, String> {
+        validate_request(&r)?;
+        let game_id = r.game_id.clone();
+        let t = &r.task;
+        let model_ids = r.model_ids.unwrap_or([0, 0]);
+        let keys = [
+            (r.models[0].clone(), r.frozen.clone(), model_ids[0]),
+            (r.models[1].clone(), r.frozen.clone(), model_ids[1]),
+        ];
+        let seat_opts = parse_seat_opts(&r);
+        let need_frozen = [
+            seat_opts[0].mcts_opponent == MctsOpponent::FrozenMlp,
+            seat_opts[1].mcts_opponent == MctsOpponent::FrozenMlp,
+        ];
+        ensure_models(cache, &keys, provider, need_frozen)?;
+        let enc = Encoder::new(Arc::new(t.job.clone()));
+        let w = Arc::new(task_world(t));
+        if !w.e.state.friendly
+            || w.e.state.target != 15
+            || w.e.state.discard_limit != 9
+            || w.e.state.players.len() != 2
+            || !w.e.state.initial
+        {
+            return Err("Unsupported production rules/start state".into());
+        }
+        let actual = rng::Rng::from_state(&t.rng_state);
+        let seeds =
+            std::array::from_fn::<_, 2, _>(|i| rng::Rng::new(rng::named(t.seat_seeds[i], "search")));
+        let action_rng = std::array::from_fn::<_, 2, _>(|i| {
+            pcg::Pcg::new(rng::named(t.seat_seeds[i], "action-sampling"))
+        });
+        Ok(Self {
+            game_id,
+            task_id: t.id.clone(),
+            keys,
+            need_frozen,
+            seat_opts,
+            enc,
+            w,
+            actual,
+            seeds,
+            action_rng,
+            seats: [None, None],
+            batch: Vec::new(),
+            actions: 0,
+            decisions: 0,
+            sims: 0,
+            started: Instant::now(),
+            interrupted: false,
+            deadline: r.deadline,
+            stop_file: r.stop_file,
+            max_turns: r.max_turns,
+            max_actions: r.max_actions,
+            eval_mode: r.eval_mode,
+            setup_simulations: r.setup_simulations,
+            setup_temperature: r.setup_temperature,
+            active_decision: None,
+        })
+    }
+
+    fn apply_action(
+        &mut self,
+        actor: usize,
+        a: Act,
+        visits: Vec<(usize, usize)>,
+        metrics: Option<search::Metrics>,
+    ) -> Result<(), String> {
+        let id = self.enc.id(&self.w.e, a);
+        let (chance, dice) = search::actual_chance(&self.w, a, &mut self.actual);
+        let mut next_w = self.w.step(a, chance);
+        next_w.logs.compact();
+        self.w = Arc::new(next_w);
+        self.actions += 1;
+        self.batch.push(serde_json::json!({
+            "actor": actor,
+            "action_id": id,
+            "chance": chance,
+            "dice": dice,
+            "visits": visits,
+            "metrics": metrics
+        }));
+        if self.batch.len() >= 10 {
+            emit(
+                serde_json::json!({"type":"events","events":self.batch}),
+                self.game_id.as_deref(),
+            )?;
+            self.batch.clear();
+        }
+        Ok(())
+    }
+
+    fn finish_decision(
+        &mut self,
+        actor: usize,
+        opt_sims: Option<usize>,
+        mut search: search::Search,
+        result: search::ResultData,
+    ) -> Result<(), String> {
+        assert!(opt_sims.is_none() || result.metrics.simulations == opt_sims.unwrap());
+        let selected = if self.eval_mode {
+            result.action_id
+        } else {
+            let temperature = if self.w.e.state.initial {
+                self.setup_temperature.unwrap_or(1.)
+            } else if self.w.e.state.turns < 20 {
+                1.
+            } else {
+                0.25
+            };
+            if result.statistics.iter().any(|x| x.visits > 0) {
+                search::choose_temperature(&result.statistics, temperature, &mut self.action_rng[actor])
+            } else {
+                result.action_id
+            }
+        };
+        search.selected = Some(selected);
+        let a = *self
+            .w
+            .e
+            .actions
+            .iter()
+            .find(|&&a| self.enc.id(&self.w.e, a) == selected)
+            .unwrap();
+        let visits = result
+            .statistics
+            .iter()
+            .filter(|x| x.visits > 0)
+            .map(|x| (x.action_id, x.visits))
+            .collect::<Vec<_>>();
+        self.sims += result.metrics.simulations;
+        self.decisions += 1;
+        self.seats[actor] = Some(search);
+        self.apply_action(actor, a, visits, Some(result.metrics))
+    }
+
+    fn advance_until_eval(
+        &mut self,
+        cache: &mut HashMap<(String, String, u32), search::Models>,
+        provider: &CandidateProvider,
+    ) -> Result<PoolStep, String> {
+        ensure_models(cache, &self.keys, provider, self.need_frozen)?;
+        loop {
+            if let Some(mut dec) = self.active_decision.take() {
+                if let Some(t) = dec.infer_start.take() {
+                    dec.stepper.add_inference_seconds(t.elapsed().as_secs_f64());
+                }
+                let models = cache.get_mut(&self.keys[dec.actor]).unwrap();
+                match dec.stepper.step(&self.enc, models, dec.reply.take())? {
+                    search::StepOutcome::NeedCandidate { stepper, features } => {
+                        let model_path = self.keys[dec.actor].0.clone();
+                        self.active_decision = Some(ActiveDecision {
+                            actor: dec.actor,
+                            opt_sims: dec.opt_sims,
+                            stepper,
+                            infer_start: Some(Instant::now()),
+                            reply: None,
+                        });
+                        return Ok(PoolStep::NeedEval {
+                            model_path,
+                            features,
+                        });
+                    }
+                    search::StepOutcome::Done { search, result } => {
+                        self.finish_decision(dec.actor, dec.opt_sims, search, result)?;
+                    }
+                }
+                continue;
+            }
+
+            if self.w.e.winner() >= 0
+                || self.w.e.state.turns >= self.max_turns
+                || self.actions >= self.max_actions
+            {
+                break;
+            }
+            if now() >= self.deadline || Path::new(&self.stop_file).exists() {
+                self.interrupted = true;
+                break;
+            }
+            let actor = self.w.e.state.current;
+            if self.w.e.actions.len() == 1 {
+                let a = self.w.e.actions[0];
+                self.apply_action(actor, a, vec![], None)?;
+                continue;
+            }
+            let seed = self.seeds[actor].u64();
+            let tree = if let Some(old) = self.seats[actor].take() {
+                old.advance(self.w.clone(), &self.enc)
+            } else {
+                search::Search::new(self.w.clone(), seed)
+            };
+            let base_opt = &self.seat_opts[actor];
+            let opt = Options {
+                simulations: if self.w.e.state.initial {
+                    self.setup_simulations.or(base_opt.simulations)
+                } else {
+                    base_opt.simulations
+                },
+                seconds: base_opt.seconds,
+                noise: base_opt.noise,
+                lanes: base_opt.lanes,
+                virtual_loss: base_opt.virtual_loss,
+                mcts_opponent: base_opt.mcts_opponent,
+            };
+            let stepper = search::SearchStepper::new(tree, seed, &opt, None, false);
+            self.active_decision = Some(ActiveDecision {
+                actor,
+                opt_sims: opt.simulations,
+                stepper,
+                infer_start: None,
+                reply: None,
+            });
+        }
+
+        if !self.batch.is_empty() {
+            emit(
+                serde_json::json!({"type":"events","events":self.batch}),
+                self.game_id.as_deref(),
+            )?;
+            self.batch.clear();
+        }
+        let winner = self.w.e.winner();
+        emit(
+            serde_json::json!({
+                "type":"done",
+                "version":1,
+                "id":self.task_id,
+                "status":if winner>=0{"completed"}else if self.interrupted{"interrupted"}else{"cutoff"},
+                "winner":winner,
+                "turns":self.w.e.state.turns,
+                "actions":self.actions,
+                "searched_decisions":self.decisions,
+                "simulations":self.sims,
+                "elapsed_seconds":self.started.elapsed().as_secs_f64(),
+                "final_state":self.w.e.state,
+                "rng_state":self.actual.state()
+            }),
+            self.game_id.as_deref(),
+        )?;
+        Ok(PoolStep::Finished)
+    }
+
+    fn set_reply(&mut self, outputs: Vec<(Vec<f32>, f32)>) {
+        if let Some(dec) = self.active_decision.as_mut() {
+            dec.reply = Some(outputs);
+        }
+    }
+}
+
+fn serve_pool(
+    workers: usize,
+    backend: batch_gpu::InProcessBackend,
+    max_batch: usize,
+    wait_us: u64,
+    fixed_batch: usize,
+    streams: usize,
+) -> Result<(), String> {
+    let batch_queue = batch_gpu::BatchQueue::start(backend, max_batch, wait_us, fixed_batch, streams);
+    let work_queue = Arc::new((Mutex::new((VecDeque::<Request>::new(), false)), Condvar::new()));
+    let cpu_threads = pool_thread_count(workers);
+
+    let mut handles = Vec::with_capacity(cpu_threads);
+    for i in 0..cpu_threads {
+        let wq = Arc::clone(&work_queue);
+        let client = batch_queue.client();
+        let slot_cap = (workers / cpu_threads) + usize::from(i < (workers % cpu_threads));
+        let handle = std::thread::Builder::new()
+            .name(format!("catan-worker-{i}"))
+            .stack_size(32 * 1024 * 1024)
+            .spawn(move || {
+                let mut models_cache = HashMap::new();
+                let provider = CandidateProvider::Queue(client.clone());
+                let mut active: Vec<PoolGame> = Vec::with_capacity(slot_cap);
+                let mut closed = false;
+                loop {
+                    {
+                        let (lock, cvar) = &*wq;
+                        let mut guard = lock.lock().unwrap();
+                        while active.is_empty() && guard.0.is_empty() && !guard.1 {
+                            guard = cvar.wait(guard).unwrap();
+                        }
+                        while active.len() < slot_cap {
+                            if let Some(req) = guard.0.pop_front() {
+                                let gid = req.game_id.clone();
+                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    PoolGame::new(req, &mut models_cache, &provider)
+                                })) {
+                                    Ok(Ok(g)) => active.push(g),
+                                    Ok(Err(error)) => {
+                                        let _ = emit(
+                                            serde_json::json!({"type":"error","error":error}),
+                                            gid.as_deref(),
+                                        );
+                                    }
+                                    Err(payload) => {
+                                        let _ = emit(
+                                            serde_json::json!({"type":"error","error":format!("Worker thread panicked: {}", panic_message(payload))}),
+                                            gid.as_deref(),
+                                        );
+                                    }
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        if guard.1 && guard.0.is_empty() {
+                            closed = true;
+                        }
+                        if !guard.0.is_empty() {
+                            cvar.notify_one();
+                        }
+                    }
+
+                    if active.is_empty() && closed {
+                        break;
+                    }
+
+                    let mut pending_by_model: HashMap<String, Vec<(usize, Vec<Vec<f32>>)>> =
+                        HashMap::new();
+                    let mut idx = 0;
+                    while idx < active.len() {
+                        let gid = active[idx].game_id.clone();
+                        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            active[idx].advance_until_eval(&mut models_cache, &provider)
+                        }));
+                        match res {
+                            Ok(Ok(PoolStep::NeedEval {
+                                model_path,
+                                features,
+                            })) => {
+                                pending_by_model
+                                    .entry(model_path)
+                                    .or_default()
+                                    .push((idx, features));
+                                idx += 1;
+                            }
+                            Ok(Ok(PoolStep::Finished)) => {
+                                active.swap_remove(idx);
+                            }
+                            Ok(Err(error)) => {
+                                let _ = emit(
+                                    serde_json::json!({"type":"error","error":error}),
+                                    gid.as_deref(),
+                                );
+                                active.swap_remove(idx);
+                            }
+                            Err(payload) => {
+                                let _ = emit(
+                                    serde_json::json!({"type":"error","error":format!("Worker thread panicked: {}", panic_message(payload))}),
+                                    gid.as_deref(),
+                                );
+                                active.swap_remove(idx);
+                            }
+                        }
+                    }
+
+                    if !pending_by_model.is_empty() {
+                        let mut failed_indices: Vec<(usize, String)> = Vec::new();
+                        for (model_path, entries) in pending_by_model {
+                            let mut flat = Vec::new();
+                            let mut counts = Vec::with_capacity(entries.len());
+                            for (_, feats) in &entries {
+                                counts.push(feats.len());
+                                flat.extend(feats.iter().cloned());
+                            }
+                            match client.predict_batch(&model_path, flat) {
+                                Ok(outputs) => {
+                                    let mut iter = outputs.into_iter();
+                                    for ((game_idx, _), count) in entries.into_iter().zip(counts) {
+                                        let chunk: Vec<_> = iter.by_ref().take(count).collect();
+                                        active[game_idx].set_reply(chunk);
+                                    }
+                                }
+                                Err(err) => {
+                                    for (game_idx, _) in entries {
+                                        failed_indices.push((game_idx, err.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        if !failed_indices.is_empty() {
+                            failed_indices.sort_by(|a, b| b.0.cmp(&a.0));
+                            for (game_idx, err) in failed_indices {
+                                let gid = active[game_idx].game_id.clone();
+                                let _ = emit(
+                                    serde_json::json!({"type":"error","error":err}),
+                                    gid.as_deref(),
+                                );
+                                active.swap_remove(game_idx);
+                            }
+                        }
+                    }
+                }
+            })
+            .map_err(|e| format!("Failed to spawn pool worker {i}: {e}"))?;
+        handles.push(handle);
+    }
+
+    emit(
+        serde_json::json!({
+            "type":"ready",
+            "version":1,
+            "backend":backend.as_str(),
+            "threads":cpu_threads,
+            "workers":workers,
+            "max_batch":max_batch,
+            "wait_us":wait_us,
+            "streams":streams
+        }),
+        None,
+    )?;
+
+    for line in io::stdin().lock().lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Request>(&line) {
+            Ok(req) => {
+                let (lock, cvar) = &*work_queue;
+                let mut guard = lock.lock().unwrap();
+                guard.0.push_back(req);
+                cvar.notify_one();
+            }
+            Err(e) => {
+                emit(
+                    serde_json::json!({"type":"error","error":e.to_string()}),
+                    None,
+                )?;
+            }
+        }
+    }
+
+    {
+        let (lock, cvar) = &*work_queue;
+        let mut guard = lock.lock().unwrap();
+        guard.1 = true;
+        cvar.notify_all();
+    }
+    for h in handles {
+        let _ = h.join();
+    }
+    let metrics = batch_queue.shutdown();
+    emit(
+        serde_json::json!({"type":"pool_metrics","metrics":metrics}),
+        None,
+    )?;
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -633,6 +1102,83 @@ struct BridgeGame {
     eval_mode: bool,
 }
 
+struct BridgeTask {
+    req_id: u64,
+    game_arc: Arc<Mutex<BridgeGame>>,
+    key: (String, String, u32),
+    need_frozen: bool,
+    enc: Encoder,
+    stepper: Option<search::SearchStepper>,
+    infer_start: Option<Instant>,
+    reply: Option<Vec<(Vec<f32>, f32)>>,
+}
+
+fn emit_bridge_reply(req_id: u64, res: Result<(usize, Vec<(usize, usize)>), String>) {
+    match res {
+        Ok((action_id, visits)) => {
+            let _ = emit(
+                serde_json::json!({"type":"reply","request_id":req_id,"ok":true,"action_id":action_id,"visits":visits}),
+                None,
+            );
+        }
+        Err(err) => {
+            let _ = emit(
+                serde_json::json!({"type":"reply","request_id":req_id,"ok":false,"error":err}),
+                None,
+            );
+        }
+    }
+}
+
+fn init_bridge_task(
+    req_id: u64,
+    game_arc: Arc<Mutex<BridgeGame>>,
+    cache: &mut HashMap<(String, String, u32), search::Models>,
+    provider: &CandidateProvider,
+) -> Result<Result<BridgeTask, (usize, Vec<(usize, usize)>)>, String> {
+    let mut g = game_arc.lock().unwrap();
+    if g.world.e.state.current != g.learner_seat {
+        return Err("Not learner turn in bridge choose".into());
+    }
+    if g.world.e.actions.len() == 1 {
+        return Ok(Err((g.enc.id(&g.world.e, g.world.e.actions[0]), vec![])));
+    }
+    let key = (g.model.clone(), g.frozen.clone(), 0);
+    let need_frozen = g.options.mcts_opponent == MctsOpponent::FrozenMlp;
+    ensure_models(cache, &[key.clone(), key.clone()], provider, [need_frozen, need_frozen])?;
+    let seed = g.search_rng.u64();
+    let tree = if let Some(old) = g.tree.take() {
+        old.advance(g.world.clone(), &g.enc)
+    } else {
+        search::Search::new(g.world.clone(), seed)
+    };
+    let opt = Options {
+        simulations: if g.world.e.state.initial {
+            g.setup_simulations.or(g.options.simulations)
+        } else {
+            g.options.simulations
+        },
+        seconds: g.options.seconds,
+        noise: g.options.noise,
+        lanes: g.options.lanes,
+        virtual_loss: g.options.virtual_loss,
+        mcts_opponent: g.options.mcts_opponent,
+    };
+    let enc = Encoder::new(Arc::clone(&g.enc.job));
+    drop(g);
+    let stepper = search::SearchStepper::new(tree, seed, &opt, None, false);
+    Ok(Ok(BridgeTask {
+        req_id,
+        game_arc,
+        key,
+        need_frozen,
+        enc,
+        stepper: Some(stepper),
+        infer_start: None,
+        reply: None,
+    }))
+}
+
 fn serve_bridge_pool(
     workers: usize,
     backend: batch_gpu::InProcessBackend,
@@ -647,114 +1193,168 @@ fn serve_bridge_pool(
         Mutex::new((VecDeque::<(u64, Arc<Mutex<BridgeGame>>)>::new(), false)),
         Condvar::new(),
     ));
+    let cpu_threads = pool_thread_count(workers);
 
-    let mut handles = Vec::with_capacity(workers);
-    for i in 0..workers {
+    let mut handles = Vec::with_capacity(cpu_threads);
+    for i in 0..cpu_threads {
         let cq = Arc::clone(&choose_queue);
         let client = batch_queue.client();
+        let slot_cap = (workers / cpu_threads) + usize::from(i < (workers % cpu_threads));
         let handle = std::thread::Builder::new()
             .name(format!("catan-bridge-{i}"))
             .stack_size(32 * 1024 * 1024)
             .spawn(move || {
-                let mut cache: HashMap<(String, String), search::Models> = HashMap::new();
+                let mut cache: HashMap<(String, String, u32), search::Models> = HashMap::new();
+                let provider = CandidateProvider::Queue(client.clone());
+                let mut active: Vec<BridgeTask> = Vec::with_capacity(slot_cap);
+                let mut closed = false;
                 loop {
-                    let (req_id, game_arc) = {
+                    {
                         let (lock, cvar) = &*cq;
                         let mut guard = lock.lock().unwrap();
-                        while guard.0.is_empty() && !guard.1 {
+                        while active.is_empty() && guard.0.is_empty() && !guard.1 {
                             guard = cvar.wait(guard).unwrap();
                         }
-                        match guard.0.pop_front() {
-                            Some(item) => item,
-                            None => break,
-                        }
-                    };
-                    let res: Result<(usize, Vec<(usize, usize)>), String> = (|| {
-                        let mut g = game_arc.lock().unwrap();
-                        if g.world.e.state.current != g.learner_seat {
-                            return Err("Not learner turn in bridge choose".into());
-                        }
-                        if g.world.e.actions.len() == 1 {
-                            return Ok((g.enc.id(&g.world.e, g.world.e.actions[0]), vec![]));
-                        }
-                        let key = (g.model.clone(), g.frozen.clone());
-                        if !cache.contains_key(&key) {
-                            let opponent = session(Path::new(&key.1)).map_err(|e| e.to_string())?;
-                            cache.insert(
-                                key.clone(),
-                                search::Models {
-                                    candidate: batch_gpu::CandidateModel::InProcessQueue {
-                                        client: client.clone(),
-                                        model_path: key.0.clone(),
-                                    },
-                                    opponent,
-                                },
-                            );
-                        }
-                        let seed = g.search_rng.u64();
-                        let mut tree = if let Some(old) = g.tree.take() {
-                            old.advance(g.world.clone(), &g.enc)
-                        } else {
-                            search::Search::new(g.world.clone(), seed)
-                        };
-                        let opt = Options {
-                            simulations: if g.world.e.state.initial {
-                                g.setup_simulations.or(g.options.simulations)
+                        while active.len() < slot_cap {
+                            if let Some((req_id, game_arc)) = guard.0.pop_front() {
+                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    init_bridge_task(req_id, game_arc, &mut cache, &provider)
+                                })) {
+                                    Ok(Ok(Ok(task))) => active.push(task),
+                                    Ok(Ok(Err(immediate))) => emit_bridge_reply(req_id, Ok(immediate)),
+                                    Ok(Err(err)) => emit_bridge_reply(req_id, Err(err)),
+                                    Err(payload) => emit_bridge_reply(
+                                        req_id,
+                                        Err(format!("Bridge worker panicked: {}", panic_message(payload))),
+                                    ),
+                                }
                             } else {
-                                g.options.simulations
-                            },
-                            seconds: g.options.seconds,
-                            noise: g.options.noise,
-                            lanes: g.options.lanes,
-                            virtual_loss: g.options.virtual_loss,
-                            mcts_opponent: g.options.mcts_opponent,
-                        };
-                        let result = tree.run(
-                            &g.enc,
-                            cache.get_mut(&key).unwrap(),
-                            seed,
-                            &opt,
-                            None,
-                            false,
-                        );
-                        let selected = if g.eval_mode {
-                            result.action_id
-                        } else {
-                            let temp = if g.world.e.state.initial {
-                                g.setup_temperature.unwrap_or(1.)
-                            } else if g.world.e.state.turns < 20 {
-                                1.
-                            } else {
-                                0.25
-                            };
-                            if result.statistics.iter().any(|x| x.visits > 0) {
-                                search::choose_temperature(&result.statistics, temp, &mut g.action_rng)
-                            } else {
-                                result.action_id
+                                break;
                             }
-                        };
-                        let visits = result
-                            .statistics
-                            .iter()
-                            .filter(|x| x.visits > 0)
-                            .map(|x| (x.action_id, x.visits))
-                            .collect::<Vec<_>>();
-                        tree.selected = Some(selected);
-                        g.tree = Some(tree);
-                        Ok((selected, visits))
-                    })();
-                    match res {
-                        Ok((action_id, visits)) => {
-                            let _ = emit(
-                                serde_json::json!({"type":"reply","request_id":req_id,"ok":true,"action_id":action_id,"visits":visits}),
-                                None,
-                            );
                         }
-                        Err(err) => {
-                            let _ = emit(
-                                serde_json::json!({"type":"reply","request_id":req_id,"ok":false,"error":err}),
-                                None,
-                            );
+                        if guard.1 && guard.0.is_empty() {
+                            closed = true;
+                        }
+                        if !guard.0.is_empty() {
+                            cvar.notify_one();
+                        }
+                    }
+
+                    if active.is_empty() && closed {
+                        break;
+                    }
+
+                    let mut pending_by_model: HashMap<String, Vec<(usize, Vec<Vec<f32>>)>> =
+                        HashMap::new();
+                    let mut idx = 0;
+                    while idx < active.len() {
+                        let req_id = active[idx].req_id;
+                        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Option<(String, Vec<Vec<f32>>)>, String> {
+                            let t = &mut active[idx];
+                            ensure_models(
+                                &mut cache,
+                                &[t.key.clone(), t.key.clone()],
+                                &provider,
+                                [t.need_frozen, t.need_frozen],
+                            )?;
+                            if let Some(started) = t.infer_start.take() {
+                                if let Some(s) = t.stepper.as_mut() {
+                                    s.add_inference_seconds(started.elapsed().as_secs_f64());
+                                }
+                            }
+                            let stepper = t.stepper.take().unwrap();
+                            let models = cache.get_mut(&t.key).unwrap();
+                            match stepper.step(&t.enc, models, t.reply.take())? {
+                                search::StepOutcome::NeedCandidate { stepper, features } => {
+                                    t.stepper = Some(stepper);
+                                    t.infer_start = Some(Instant::now());
+                                    Ok(Some((t.key.0.clone(), features)))
+                                }
+                                search::StepOutcome::Done { mut search, result } => {
+                                    let mut g = t.game_arc.lock().unwrap();
+                                    let selected = if g.eval_mode {
+                                        result.action_id
+                                    } else {
+                                        let temp = if g.world.e.state.initial {
+                                            g.setup_temperature.unwrap_or(1.)
+                                        } else if g.world.e.state.turns < 20 {
+                                            1.
+                                        } else {
+                                            0.25
+                                        };
+                                        if result.statistics.iter().any(|x| x.visits > 0) {
+                                            search::choose_temperature(&result.statistics, temp, &mut g.action_rng)
+                                        } else {
+                                            result.action_id
+                                        }
+                                    };
+                                    let visits = result
+                                        .statistics
+                                        .iter()
+                                        .filter(|x| x.visits > 0)
+                                        .map(|x| (x.action_id, x.visits))
+                                        .collect::<Vec<_>>();
+                                    search.selected = Some(selected);
+                                    g.tree = Some(search);
+                                    drop(g);
+                                    emit_bridge_reply(req_id, Ok((selected, visits)));
+                                    Ok(None)
+                                }
+                            }
+                        }));
+                        match res {
+                            Ok(Ok(Some((model_path, features)))) => {
+                                pending_by_model.entry(model_path).or_default().push((idx, features));
+                                idx += 1;
+                            }
+                            Ok(Ok(None)) => {
+                                active.swap_remove(idx);
+                            }
+                            Ok(Err(err)) => {
+                                emit_bridge_reply(req_id, Err(err));
+                                active.swap_remove(idx);
+                            }
+                            Err(payload) => {
+                                emit_bridge_reply(
+                                    req_id,
+                                    Err(format!("Bridge worker panicked: {}", panic_message(payload))),
+                                );
+                                active.swap_remove(idx);
+                            }
+                        }
+                    }
+
+                    if !pending_by_model.is_empty() {
+                        let mut failed_indices: Vec<(usize, String)> = Vec::new();
+                        for (model_path, entries) in pending_by_model {
+                            let mut flat = Vec::new();
+                            let mut counts = Vec::with_capacity(entries.len());
+                            for (_, feats) in &entries {
+                                counts.push(feats.len());
+                                flat.extend(feats.iter().cloned());
+                            }
+                            match client.predict_batch(&model_path, flat) {
+                                Ok(outputs) => {
+                                    let mut iter = outputs.into_iter();
+                                    for ((task_idx, _), count) in entries.into_iter().zip(counts) {
+                                        let chunk: Vec<_> = iter.by_ref().take(count).collect();
+                                        active[task_idx].reply = Some(chunk);
+                                    }
+                                }
+                                Err(err) => {
+                                    for (task_idx, _) in entries {
+                                        failed_indices.push((task_idx, err.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        if !failed_indices.is_empty() {
+                            failed_indices.sort_by(|a, b| b.0.cmp(&a.0));
+                            for (task_idx, err) in failed_indices {
+                                let req_id = active[task_idx].req_id;
+                                emit_bridge_reply(req_id, Err(err));
+                                active.swap_remove(task_idx);
+                            }
                         }
                     }
                 }
@@ -864,7 +1464,9 @@ fn serve_bridge_pool(
                         .iter()
                         .find(|&&a| g.enc.id(&g.world.e, a) == action_id)
                         .ok_or_else(|| format!("Illegal step action_id {action_id}"))?;
-                    g.world = Arc::new(g.world.step(a, chance));
+                    let mut step_w = g.world.step(a, chance);
+                    step_w.logs.compact();
+                    g.world = Arc::new(step_w);
                     Ok(())
                 })();
                 match res {

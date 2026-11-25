@@ -42,6 +42,8 @@ Reference for the CLI tools and scripts added for batched GPU self-play, head-to
 | `--workers` | `128` | Concurrent Rust game workers for CNN vs. CNN (`--pool`). |
 | `--jsettlers-workers` | Matches `--workers` | Concurrent Python/Rust workers for JSettlers vs. CNN (`--bridge-pool`). |
 | `--jsettlers-jvms` | `12` | Parallel Java JSettlers `Bridge` JVMs (sharded consistently by game session). |
+| `--tail-over-dispatch` | `32` | Extra games kept in flight near block completion so slow/cutoff stragglers do not starve GPU batching (`0` disables). |
+| `--load-workers` | `0` (auto) | Parallel Python worker processes for loading/deriving games into RAM (`0` = auto `min(cpu_count, 16)`). |
 | `--gpu-backend` | Auto (`cuda` if available, else `coreml` on macOS, else `cpu-batch`) | Native Rust ONNX execution provider (`coreml`, `cuda`, or `cpu-batch`). CUDA uses FP16 ONNX by default unless `--fp32` is set. |
 | `--train-device` | `auto` | PyTorch device for W4 training and validation (`auto`, `cuda`, `mps`, or `cpu`). |
 | `--coreml-batch` / `--batch-size` | `64` | Static padded batch size for `coreml` (or `cuda` with `--fixed-batch`), otherwise max dynamic batch size for `cuda` / `cpu-batch`. |

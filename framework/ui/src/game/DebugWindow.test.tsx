@@ -8,9 +8,11 @@ import {
   getState,
   postAction,
   prepareDebugAction,
+  setDebugSearchSettings,
   setDebugSimulations,
   setPerspective,
   stepDebugAction,
+  undoDebugAction,
 } from "../utils/apiClient";
 import { makeGameState } from "../test/fixtures";
 import type { DebugSnapshot } from "../utils/api.types";
@@ -23,7 +25,9 @@ vi.mock("../utils/apiClient", () => ({
   getDebugState: vi.fn(),
   prepareDebugAction: vi.fn(),
   stepDebugAction: vi.fn(),
+  undoDebugAction: vi.fn(),
   setDebugSimulations: vi.fn(),
+  setDebugSearchSettings: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -255,4 +259,45 @@ test("wait between actions pauses bot moves and enables Take action button", asy
     expect(stepDebugAction).toHaveBeenCalledWith("game-123"),
   );
   expect(setPerspective).toHaveBeenCalledWith(null);
+});
+
+test("vp-margin alpha control displays current value and updates via setDebugSearchSettings", async () => {
+  const game = makeGameState({
+    current_color: "RED",
+    bot_colors: ["RED"],
+    state_index: 12,
+  });
+  const snap = makeDebugSnapshot({
+    can_set_simulations: true,
+    can_set_vp_margin_alpha: true,
+    vp_margin_alpha: 0.03,
+  });
+  vi.mocked(getState).mockResolvedValue(game);
+  vi.mocked(postAction).mockReturnValue(new Promise(() => {}));
+  vi.mocked(getDebugState).mockResolvedValue(snap);
+  vi.mocked(setDebugSearchSettings).mockResolvedValue({
+    ...snap,
+    vp_margin_alpha: 0.15,
+  });
+
+  renderGame();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Expand debug window" }),
+  );
+
+  const alphaInput = await screen.findByLabelText("VP-margin alpha");
+  expect(alphaInput).toHaveValue(0.03);
+
+  await userEvent.clear(alphaInput);
+  await userEvent.type(alphaInput, "0.15");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Set VP-margin alpha" }),
+  );
+
+  await waitFor(() =>
+    expect(setDebugSearchSettings).toHaveBeenCalledWith("game-123", {
+      vp_margin_alpha: 0.15,
+    }),
+  );
+  expect(undoDebugAction).not.toHaveBeenCalled();
 });

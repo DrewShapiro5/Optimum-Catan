@@ -419,6 +419,7 @@ export default function DebugWindow({
                 <button
                   type="button"
                   className="debug-sims-apply"
+                  aria-label="Set VP-margin alpha"
                   disabled={alphaInput.trim() === "" || stepping || undoing}
                   onClick={applyVpMarginAlpha}
                 >

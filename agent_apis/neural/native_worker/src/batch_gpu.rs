@@ -17,7 +17,7 @@ use std::net::TcpStream;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, SyncSender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -285,12 +285,34 @@ pub struct BatchMetrics {
     pub batch_rows_histogram: BTreeMap<usize, usize>,
 }
 
+#[derive(Clone)]
+enum ReplySink {
+    Batch(SyncSender<(usize, Result<(Vec<f32>, f32), String>)>),
+    Tagged {
+        tag: u64,
+        tx: Sender<(u64, usize, Result<(Vec<f32>, f32), String>)>,
+    },
+}
+
 struct InferRequest {
     model_path: String,
     fallback_model_path: Option<String>,
     features: Vec<f32>,
     slot: usize,
-    reply: SyncSender<(usize, Result<(Vec<f32>, f32), String>)>,
+    reply: ReplySink,
+}
+
+impl InferRequest {
+    fn send_reply(self, res: Result<(Vec<f32>, f32), String>) {
+        match self.reply {
+            ReplySink::Batch(tx) => {
+                let _ = tx.send((self.slot, res));
+            }
+            ReplySink::Tagged { tag, tx } => {
+                let _ = tx.send((tag, self.slot, res));
+            }
+        }
+    }
 }
 
 struct SharedQueueState {
@@ -299,9 +321,31 @@ struct SharedQueueState {
 }
 
 struct QueueCounters {
-    queued_items: AtomicUsize,
+    push_seq: AtomicUsize,
     active_games: AtomicUsize,
     tracks_active: AtomicBool,
+}
+
+/// Handle for a non-blocking GPU batch submission returned by `submit_batch_with_fallback`.
+pub struct PendingBatch {
+    rrx: Option<Receiver<(usize, Result<(Vec<f32>, f32), String>)>>,
+    count: usize,
+}
+
+impl PendingBatch {
+    pub fn wait(self) -> Result<Vec<(Vec<f32>, f32)>, String> {
+        let Some(rrx) = self.rrx else {
+            return Ok(vec![]);
+        };
+        let mut ordered: Vec<Option<(Vec<f32>, f32)>> = vec![None; self.count];
+        for _ in 0..self.count {
+            let (slot, res) = rrx
+                .recv()
+                .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?;
+            ordered[slot] = Some(res?);
+        }
+        Ok(ordered.into_iter().map(|v| v.unwrap()).collect())
+    }
 }
 
 /// RAII guard tracking an active concurrent game in `BatchQueue`.
@@ -332,29 +376,87 @@ impl QueueClient {
         fallback_model_path: Option<&str>,
         features: Vec<f32>,
     ) -> Result<(Vec<f32>, f32), String> {
-        let (rtx, rrx) = mpsc::sync_channel(1);
-        {
-            let (lock, cvar) = &*self.shared;
-            let mut guard = lock.lock().unwrap();
-            if guard.closed {
-                return Err("In-process GPU inference queue closed".to_string());
-            }
+        let mut out = self
+            .submit_batch_with_fallback(model_path, fallback_model_path, vec![features])?
+            .wait()?;
+        Ok(out.pop().unwrap())
+    }
+
+    fn enqueue_requests(
+        &self,
+        model_path: &str,
+        fallback_model_path: Option<&str>,
+        batch: Vec<Vec<f32>>,
+        reply: ReplySink,
+    ) -> Result<(), String> {
+        let k = batch.len();
+        if k == 0 {
+            return Ok(());
+        }
+        let (lock, cvar) = &*self.shared;
+        let mut guard = lock.lock().unwrap();
+        if guard.closed {
+            return Err("In-process GPU inference queue closed".to_string());
+        }
+        let fallback_owned = fallback_model_path.map(str::to_string);
+        for (slot, features) in batch.into_iter().enumerate() {
             guard.items.push_back(InferRequest {
                 model_path: model_path.to_string(),
-                fallback_model_path: fallback_model_path.map(str::to_string),
+                fallback_model_path: fallback_owned.clone(),
                 features,
-                slot: 0,
-                reply: rtx,
+                slot,
+                reply: reply.clone(),
             });
-            self.counters
-                .queued_items
-                .store(guard.items.len(), Ordering::Release);
-            cvar.notify_one();
         }
-        let (_, res) = rrx
-            .recv()
-            .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?;
-        res
+        self.counters.push_seq.fetch_add(1, Ordering::AcqRel);
+        if k == 1 {
+            cvar.notify_one();
+        } else {
+            cvar.notify_all();
+        }
+        Ok(())
+    }
+
+    pub fn submit_batch_with_fallback(
+        &self,
+        model_path: &str,
+        fallback_model_path: Option<&str>,
+        batch: Vec<Vec<f32>>,
+    ) -> Result<PendingBatch, String> {
+        let k = batch.len();
+        if k == 0 {
+            return Ok(PendingBatch { rrx: None, count: 0 });
+        }
+        let (rtx, rrx) = mpsc::sync_channel(k);
+        self.enqueue_requests(model_path, fallback_model_path, batch, ReplySink::Batch(rtx))?;
+        Ok(PendingBatch {
+            rrx: Some(rrx),
+            count: k,
+        })
+    }
+
+    /// Submits a batch of feature rows whose replies will arrive asynchronously on `reply_tx`
+    /// tagged with `(tag, slot, result)`, allowing a worker thread to multiplex independent models
+    /// without blocking on another model's GPU batch.
+    pub fn submit_tagged_with_fallback(
+        &self,
+        model_path: &str,
+        fallback_model_path: Option<&str>,
+        batch: Vec<Vec<f32>>,
+        tag: u64,
+        reply_tx: &Sender<(u64, usize, Result<(Vec<f32>, f32), String>)>,
+    ) -> Result<usize, String> {
+        let k = batch.len();
+        self.enqueue_requests(
+            model_path,
+            fallback_model_path,
+            batch,
+            ReplySink::Tagged {
+                tag,
+                tx: reply_tx.clone(),
+            },
+        )?;
+        Ok(k)
     }
 
     pub fn predict_batch(
@@ -371,49 +473,8 @@ impl QueueClient {
         fallback_model_path: Option<&str>,
         batch: Vec<Vec<f32>>,
     ) -> Result<Vec<(Vec<f32>, f32)>, String> {
-        let k = batch.len();
-        if k == 0 {
-            return Ok(vec![]);
-        }
-        if k == 1 {
-            let one = batch.into_iter().next().unwrap();
-            return Ok(vec![self.predict_with_fallback(
-                model_path,
-                fallback_model_path,
-                one,
-            )?]);
-        }
-        let (rtx, rrx) = mpsc::sync_channel(k);
-        {
-            let (lock, cvar) = &*self.shared;
-            let mut guard = lock.lock().unwrap();
-            if guard.closed {
-                return Err("In-process GPU inference queue closed".to_string());
-            }
-            let fallback_owned = fallback_model_path.map(str::to_string);
-            for (slot, features) in batch.into_iter().enumerate() {
-                guard.items.push_back(InferRequest {
-                    model_path: model_path.to_string(),
-                    fallback_model_path: fallback_owned.clone(),
-                    features,
-                    slot,
-                    reply: rtx.clone(),
-                });
-            }
-            self.counters
-                .queued_items
-                .store(guard.items.len(), Ordering::Release);
-            cvar.notify_all();
-        }
-        drop(rtx);
-        let mut ordered: Vec<Option<(Vec<f32>, f32)>> = vec![None; k];
-        for _ in 0..k {
-            let (slot, res) = rrx
-                .recv()
-                .map_err(|_| "In-process GPU inference thread dropped reply".to_string())?;
-            ordered[slot] = Some(res?);
-        }
-        Ok(ordered.into_iter().map(|v| v.unwrap()).collect())
+        self.submit_batch_with_fallback(model_path, fallback_model_path, batch)?
+            .wait()
     }
 }
 
@@ -531,16 +592,40 @@ fn drain_pending(
     guard: &mut SharedQueueState,
     pending: &mut Vec<InferRequest>,
     effective_max: usize,
-    queued_items: &AtomicUsize,
+    target_model: &mut Option<String>,
 ) {
-    while pending.len() < effective_max {
-        if let Some(req) = guard.items.pop_front() {
-            pending.push(req);
-        } else {
-            break;
-        }
+    if pending.len() >= effective_max || guard.items.is_empty() {
+        return;
     }
-    queued_items.store(guard.items.len(), Ordering::Release);
+    if target_model.is_none() {
+        // Pick the model with the most queued rows so multi-model matchups form full
+        // single-model batches instead of splitting and padding two half-empty batches.
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for req in &guard.items {
+            if let Some(entry) = counts.iter_mut().find(|(m, _)| *m == req.model_path) {
+                entry.1 += 1;
+            } else {
+                counts.push((req.model_path.clone(), 1));
+            }
+        }
+        *target_model = counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(model, _)| model);
+    }
+    let Some(chosen) = target_model.as_deref() else {
+        return;
+    };
+    let mut idx = 0;
+    while idx < guard.items.len() && pending.len() < effective_max {
+        if guard.items[idx].model_path == chosen {
+            if let Some(req) = guard.items.remove(idx) {
+                pending.push(req);
+                continue;
+            }
+        }
+        idx += 1;
+    }
 }
 
 fn should_use_dynamic_fallback(
@@ -579,6 +664,7 @@ fn wait_for_coalesce_window<'a>(
     effective_max: usize,
     wait_duration: Duration,
     counters: &QueueCounters,
+    target_model: &mut Option<String>,
 ) -> (std::sync::MutexGuard<'a, SharedQueueState>, f64, usize, bool) {
     let tracked = counters.tracks_active.load(Ordering::Acquire);
     let active_now = counters.active_games.load(Ordering::Acquire);
@@ -596,11 +682,14 @@ fn wait_for_coalesce_window<'a>(
         // OS timer tick (~1-15.6 ms on Windows); spin-wait atomically
         // for short windows instead so single/tail batches aren't stalled.
         if wait_duration <= Duration::from_millis(2) {
+            let mut seen_seq = counters.push_seq.load(Ordering::Acquire);
             drop(guard);
             loop {
-                if counters.queued_items.load(Ordering::Acquire) > 0 {
+                let cur_seq = counters.push_seq.load(Ordering::Acquire);
+                if cur_seq != seen_seq {
+                    seen_seq = cur_seq;
                     guard = lock.lock().unwrap();
-                    drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                    drain_pending(&mut guard, pending, effective_max, target_model);
                     let still_active = counters.active_games.load(Ordering::Acquire);
                     if should_skip_coalesce_wait(
                         wait_duration,
@@ -616,7 +705,7 @@ fn wait_for_coalesce_window<'a>(
                     drop(guard);
                 } else if window_start.elapsed() >= wait_duration {
                     guard = lock.lock().unwrap();
-                    drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                    drain_pending(&mut guard, pending, effective_max, target_model);
                     break;
                 } else {
                     std::hint::spin_loop();
@@ -630,7 +719,7 @@ fn wait_for_coalesce_window<'a>(
                 }
                 let (g, timeout_res) = cvar.wait_timeout(guard, wait_duration - elapsed).unwrap();
                 guard = g;
-                drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                drain_pending(&mut guard, pending, effective_max, target_model);
                 let still_active = counters.active_games.load(Ordering::Acquire);
                 if timeout_res.timed_out() || (tracked && still_active <= 1) {
                     break;
@@ -673,7 +762,7 @@ impl BatchQueue {
             Condvar::new(),
         ));
         let counters = Arc::new(QueueCounters {
-            queued_items: AtomicUsize::new(0),
+            push_seq: AtomicUsize::new(0),
             active_games: AtomicUsize::new(0),
             tracks_active: AtomicBool::new(false),
         });
@@ -705,11 +794,12 @@ impl BatchQueue {
                             if guard.items.is_empty() && guard.closed {
                                 break;
                             }
+                            let mut target_model: Option<String> = None;
                             drain_pending(
                                 &mut guard,
                                 &mut pending,
                                 effective_max,
-                                &counters_bg.queued_items,
+                                &mut target_model,
                             );
                             let (g, secs, observed, tracked) = wait_for_coalesce_window(
                                 lock,
@@ -719,6 +809,7 @@ impl BatchQueue {
                                 effective_max,
                                 wait_duration,
                                 &counters_bg,
+                                &mut target_model,
                             );
                             guard = g;
                             // If items remain for another stream, wake one up before releasing lock.
@@ -791,7 +882,7 @@ impl BatchQueue {
                                             backend, run_path, e
                                         );
                                         for req in group {
-                                            let _ = req.reply.send((req.slot, Err(msg.clone())));
+                                            req.send_reply(Err(msg.clone()));
                                         }
                                         continue;
                                     }
@@ -838,12 +929,12 @@ impl BatchQueue {
                             match batch_res {
                                 Ok(outputs) => {
                                     for (req, out) in group.into_iter().zip(outputs) {
-                                        let _ = req.reply.send((req.slot, Ok(out)));
+                                        req.send_reply(Ok(out));
                                     }
                                 }
                                 Err(err) => {
                                     for req in group {
-                                        let _ = req.reply.send((req.slot, Err(err.clone())));
+                                        req.send_reply(Err(err.clone()));
                                     }
                                 }
                             }
@@ -903,11 +994,12 @@ mod tests {
         });
         let cvar = Condvar::new();
         let counters = QueueCounters {
-            queued_items: AtomicUsize::new(0),
+            push_seq: AtomicUsize::new(0),
             active_games: AtomicUsize::new(1),
             tracks_active: AtomicBool::new(true),
         };
         let mut pending = Vec::new();
+        let mut target_model = None;
         let guard = shared.lock().unwrap();
         let (_g, secs, observed, tracked) = wait_for_coalesce_window(
             &shared,
@@ -917,6 +1009,7 @@ mod tests {
             128,
             Duration::from_millis(50),
             &counters,
+            &mut target_model,
         );
         assert!(tracked);
         assert_eq!(observed, 1);
@@ -1001,11 +1094,12 @@ mod tests {
         });
         let cvar = Condvar::new();
         let counters = QueueCounters {
-            queued_items: AtomicUsize::new(0),
+            push_seq: AtomicUsize::new(0),
             active_games: AtomicUsize::new(2),
             tracks_active: AtomicBool::new(true),
         };
         let mut pending = Vec::new();
+        let mut target_model = None;
         let guard = shared.lock().unwrap();
         let started = Instant::now();
         let (_g, secs, observed, tracked) = wait_for_coalesce_window(
@@ -1016,6 +1110,7 @@ mod tests {
             128,
             Duration::from_micros(50),
             &counters,
+            &mut target_model,
         );
         let elapsed = started.elapsed();
         assert!(tracked);
@@ -1026,5 +1121,76 @@ mod tests {
             elapsed,
             secs
         );
+    }
+
+    #[test]
+    fn drain_pending_packs_one_model_per_batch() {
+        let mut state = SharedQueueState {
+            items: VecDeque::new(),
+            closed: false,
+        };
+        let (tx, _rx) = mpsc::sync_channel(8);
+        for model in ["mA", "mB", "mA", "mB", "mA"] {
+            state.items.push_back(InferRequest {
+                model_path: model.to_string(),
+                fallback_model_path: None,
+                features: vec![],
+                slot: 0,
+                reply: ReplySink::Batch(tx.clone()),
+            });
+        }
+        let mut pending = Vec::new();
+        let mut target_model = None;
+        drain_pending(&mut state, &mut pending, 4, &mut target_model);
+        assert_eq!(target_model.as_deref(), Some("mA"));
+        assert_eq!(pending.len(), 3);
+        assert!(pending.iter().all(|r| r.model_path == "mA"));
+        assert_eq!(state.items.len(), 2);
+        assert!(state.items.iter().all(|r| r.model_path == "mB"));
+    }
+
+    #[test]
+    fn tagged_submissions_deliver_by_tag() {
+        let (tx, rx) = mpsc::channel();
+        let shared = Arc::new((
+            Mutex::new(SharedQueueState {
+                items: VecDeque::new(),
+                closed: false,
+            }),
+            Condvar::new(),
+        ));
+        let counters = Arc::new(QueueCounters {
+            push_seq: AtomicUsize::new(0),
+            active_games: AtomicUsize::new(0),
+            tracks_active: AtomicBool::new(false),
+        });
+        let client = QueueClient {
+            shared: Arc::clone(&shared),
+            counters,
+        };
+        client
+            .submit_tagged_with_fallback("mA", None, vec![vec![1.0], vec![2.0]], 11, &tx)
+            .unwrap();
+        client
+            .submit_tagged_with_fallback("mB", None, vec![vec![3.0]], 22, &tx)
+            .unwrap();
+
+        // Simulate draining only mA first and replying immediately without blocking on mB.
+        let mut guard = shared.0.lock().unwrap();
+        let mut batch_a = Vec::new();
+        let mut target = None;
+        drain_pending(&mut guard, &mut batch_a, 8, &mut target);
+        drop(guard);
+        assert_eq!(target.as_deref(), Some("mA"));
+        assert_eq!(batch_a.len(), 2);
+        for (i, req) in batch_a.into_iter().enumerate() {
+            req.send_reply(Ok((vec![i as f32], 0.5)));
+        }
+
+        let got: Vec<_> = rx.try_iter().collect();
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|(tag, _, _)| *tag == 11));
+        assert_eq!(got[0].1, 0);
+        assert_eq!(got[1].1, 1);
     }
 }

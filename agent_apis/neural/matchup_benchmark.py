@@ -581,6 +581,11 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
     meta_by_gid = {}
     next_i = 0
     in_flight = 0
+    started = time.perf_counter()
+    last_progress = started
+    progress_actions = 0
+    progress_decisions = 0
+    progress_sims = 0
 
     def dispatch_one():
         nonlocal next_i, in_flight
@@ -609,6 +614,26 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
             mtype = msg.get('type')
             if mtype == 'error':
                 raise RuntimeError(f'CoreML pool error ({msg.get("game_id")}): {msg.get("error")}')
+            elif mtype == 'events':
+                evs = msg.get('events') or ()
+                progress_actions += len(evs)
+                for ev in evs:
+                    m = ev.get('metrics')
+                    if m:
+                        progress_decisions += 1
+                        progress_sims += m.get('simulations', 0) or 0
+                now = time.perf_counter()
+                if now - last_progress >= 10.0:
+                    el = now - started
+                    print(
+                        f'  [progress {el:5.1f}s] {len(results)}/{len(schedule)} completed | '
+                        f'{progress_actions} actions ({progress_actions / el:.1f}/s) | '
+                        f'{progress_decisions} dec ({progress_decisions / el:.1f}/s) | '
+                        f'{progress_sims} sims ({progress_sims / el:.0f} sims/s) | '
+                        f'{in_flight} in-flight',
+                        flush=True,
+                    )
+                    last_progress = now
             elif mtype == 'done':
                 item, colors = meta_by_gid.pop(msg['game_id'])
                 winner_idx = msg['winner']

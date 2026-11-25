@@ -22,7 +22,19 @@ foreach ($dir in @($pyDir, (Join-Path $pyDir "Library\bin"))) {
     }
 }
 
-$needsUiBuild = (-not (Test-Path "framework\ui\dist\index.html")) -or (
+$distIndex = "framework\ui\dist\index.html"
+$hasStaleUiSrc = $false
+if (Test-Path $distIndex) {
+    $distTime = (Get-Item $distIndex).LastWriteTimeUtc
+    $newerSrc = Get-ChildItem -Path "framework\ui\src", "framework\ui\index.html", "framework\ui\package.json" -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTimeUtc -gt $distTime } |
+        Select-Object -First 1
+    if ($null -ne $newerSrc) {
+        $hasStaleUiSrc = $true
+    }
+}
+
+$needsUiBuild = (-not (Test-Path $distIndex)) -or $hasStaleUiSrc -or (
     Select-String -Path "framework\ui\dist\assets\*.js" -Pattern "localhost:5001" -Quiet -ErrorAction SilentlyContinue
 )
 

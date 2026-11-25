@@ -250,7 +250,8 @@ fn pool_thread_count(workers: usize) -> usize {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(8);
-    workers.max(1).min(cores.max(1))
+    // Keep several games per CPU thread so tiny/head-to-head pools batch more rows per submit wave.
+    workers.div_ceil(4).max(1).min(cores.max(1))
 }
 
 fn ensure_models(
@@ -883,6 +884,60 @@ impl PoolGame {
     }
 }
 
+struct PoolSlot {
+    token: u64,
+    game: PoolGame,
+    pending_outputs: Vec<Option<(Vec<f32>, f32)>>,
+    pending_left: usize,
+    ready_to_step: bool,
+}
+
+fn remove_slot_by_token_with_error(active: &mut Vec<PoolSlot>, token: u64, err: &str) {
+    if let Some(pos) = active.iter().position(|s| s.token == token) {
+        let st = active.swap_remove(pos);
+        let _ = emit(
+            serde_json::json!({"type":"error","error":err}),
+            st.game.game_id.as_deref(),
+        );
+    }
+}
+
+fn apply_tagged_pool_reply(
+    active: &mut Vec<PoolSlot>,
+    tag: u64,
+    slot_idx: usize,
+    res: Result<(Vec<f32>, f32), String>,
+) {
+    let Some(pos) = active.iter().position(|s| s.token == tag) else {
+        return;
+    };
+    match res {
+        Ok(val) => {
+            let st = &mut active[pos];
+            if slot_idx < st.pending_outputs.len() && st.pending_outputs[slot_idx].is_none() {
+                st.pending_outputs[slot_idx] = Some(val);
+                st.pending_left = st.pending_left.saturating_sub(1);
+                if st.pending_left == 0 {
+                    let outputs = st
+                        .pending_outputs
+                        .drain(..)
+                        .map(|v| v.expect("missing GPU reply slot"))
+                        .collect();
+                    st.game.set_reply(outputs);
+                    st.ready_to_step = true;
+                }
+            }
+        }
+        Err(err) => {
+            let st = active.swap_remove(pos);
+            let _ = emit(
+                serde_json::json!({"type":"error","error":err}),
+                st.game.game_id.as_deref(),
+            );
+        }
+    }
+}
+
 fn serve_pool(
     workers: usize,
     backend: batch_gpu::InProcessBackend,
@@ -909,7 +964,10 @@ fn serve_pool(
             .spawn(move || {
                 let mut models_cache = HashMap::new();
                 let provider = CandidateProvider::Queue(client.clone());
-                let mut active: Vec<PoolGame> = Vec::with_capacity(slot_cap);
+                let (reply_tx, reply_rx) =
+                    std::sync::mpsc::channel::<(u64, usize, Result<(Vec<f32>, f32), String>)>();
+                let mut active: Vec<PoolSlot> = Vec::with_capacity(slot_cap);
+                let mut next_token: u64 = 1;
                 let mut closed = false;
                 loop {
                     {
@@ -926,7 +984,15 @@ fn serve_pool(
                                 })) {
                                     Ok(Ok(mut g)) => {
                                         g._active_guard = Some(active_guard);
-                                        active.push(g);
+                                        let token = next_token;
+                                        next_token = next_token.wrapping_add(1).max(1);
+                                        active.push(PoolSlot {
+                                            token,
+                                            game: g,
+                                            pending_outputs: Vec::new(),
+                                            pending_left: 0,
+                                            ready_to_step: true,
+                                        });
                                     }
                                     Ok(Err(error)) => {
                                         let _ = emit(
@@ -957,13 +1023,17 @@ fn serve_pool(
                         break;
                     }
 
-                    let mut pending_by_model: HashMap<(String, Option<String>), Vec<(usize, Vec<Vec<f32>>)>> =
-                        HashMap::new();
+                    let mut to_submit: Vec<(u64, String, Option<String>, Vec<Vec<f32>>)> = Vec::new();
                     let mut idx = 0;
                     while idx < active.len() {
-                        let gid = active[idx].game_id.clone();
+                        if !active[idx].ready_to_step {
+                            idx += 1;
+                            continue;
+                        }
+                        active[idx].ready_to_step = false;
+                        let gid = active[idx].game.game_id.clone();
                         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            active[idx].advance_until_eval(&mut models_cache, &provider)
+                            active[idx].game.advance_until_eval(&mut models_cache, &provider)
                         }));
                         match res {
                             Ok(Ok(PoolStep::NeedEval {
@@ -971,10 +1041,20 @@ fn serve_pool(
                                 fallback_model,
                                 features,
                             })) => {
-                                pending_by_model
-                                    .entry((model_path, fallback_model))
-                                    .or_default()
-                                    .push((idx, features));
+                                let count = features.len();
+                                if count == 0 {
+                                    active[idx].game.set_reply(Vec::new());
+                                    active[idx].ready_to_step = true;
+                                } else {
+                                    active[idx].pending_outputs = vec![None; count];
+                                    active[idx].pending_left = count;
+                                    to_submit.push((
+                                        active[idx].token,
+                                        model_path,
+                                        fallback_model,
+                                        features,
+                                    ));
+                                }
                                 idx += 1;
                             }
                             Ok(Ok(PoolStep::Finished)) => {
@@ -997,43 +1077,48 @@ fn serve_pool(
                         }
                     }
 
-                    if !pending_by_model.is_empty() {
-                        let mut failed_indices: Vec<(usize, String)> = Vec::new();
-                        for ((model_path, fallback_model), entries) in pending_by_model {
-                            let mut flat = Vec::new();
-                            let mut counts = Vec::with_capacity(entries.len());
-                            for (_, feats) in &entries {
-                                counts.push(feats.len());
-                                flat.extend(feats.iter().cloned());
+                    for (token, model_path, fallback_model, features) in to_submit {
+                        if let Err(err) = client.submit_tagged_with_fallback(
+                            &model_path,
+                            fallback_model.as_deref(),
+                            features,
+                            token,
+                            &reply_tx,
+                        ) {
+                            remove_slot_by_token_with_error(&mut active, token, &err);
+                        }
+                    }
+
+                    while let Ok((tag, slot_idx, res)) = reply_rx.try_recv() {
+                        apply_tagged_pool_reply(&mut active, tag, slot_idx, res);
+                    }
+
+                    if !active.is_empty() && !active.iter().any(|s| s.ready_to_step) {
+                        if !closed && active.len() < slot_cap {
+                            let (lock, _) = &*wq;
+                            let guard = lock.lock().unwrap();
+                            if !guard.0.is_empty() {
+                                continue;
                             }
-                            match client.predict_batch_with_fallback(
-                                &model_path,
-                                fallback_model.as_deref(),
-                                flat,
-                            ) {
-                                Ok(outputs) => {
-                                    let mut iter = outputs.into_iter();
-                                    for ((game_idx, _), count) in entries.into_iter().zip(counts) {
-                                        let chunk: Vec<_> = iter.by_ref().take(count).collect();
-                                        active[game_idx].set_reply(chunk);
-                                    }
-                                }
-                                Err(err) => {
-                                    for (game_idx, _) in entries {
-                                        failed_indices.push((game_idx, err.clone()));
-                                    }
-                                }
+                            if guard.1 {
+                                closed = true;
                             }
                         }
-                        if !failed_indices.is_empty() {
-                            failed_indices.sort_by(|a, b| b.0.cmp(&a.0));
-                            for (game_idx, err) in failed_indices {
-                                let gid = active[game_idx].game_id.clone();
-                                let _ = emit(
-                                    serde_json::json!({"type":"error","error":err}),
-                                    gid.as_deref(),
-                                );
-                                active.swap_remove(game_idx);
+                        match reply_rx.recv() {
+                            Ok((tag, slot_idx, res)) => {
+                                apply_tagged_pool_reply(&mut active, tag, slot_idx, res);
+                                while let Ok((tag, slot_idx, res)) = reply_rx.try_recv() {
+                                    apply_tagged_pool_reply(&mut active, tag, slot_idx, res);
+                                }
+                            }
+                            Err(_) => {
+                                for st in active.drain(..) {
+                                    let _ = emit(
+                                        serde_json::json!({"type":"error","error":"GPU reply channel closed unexpectedly"}),
+                                        st.game.game_id.as_deref(),
+                                    );
+                                }
+                                break;
                             }
                         }
                     }
@@ -1379,6 +1464,7 @@ fn serve_bridge_pool(
                     }
 
                     if !pending_by_model.is_empty() {
+                        let mut submitted = Vec::with_capacity(pending_by_model.len());
                         let mut failed_indices: Vec<(usize, String)> = Vec::new();
                         for ((model_path, fallback_model), entries) in pending_by_model {
                             let mut flat = Vec::new();
@@ -1387,11 +1473,21 @@ fn serve_bridge_pool(
                                 counts.push(feats.len());
                                 flat.extend(feats.iter().cloned());
                             }
-                            match client.predict_batch_with_fallback(
+                            match client.submit_batch_with_fallback(
                                 &model_path,
                                 fallback_model.as_deref(),
                                 flat,
                             ) {
+                                Ok(handle) => submitted.push((entries, counts, handle)),
+                                Err(err) => {
+                                    for (task_idx, _) in entries {
+                                        failed_indices.push((task_idx, err.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        for (entries, counts, handle) in submitted {
+                            match handle.wait() {
                                 Ok(outputs) => {
                                     let mut iter = outputs.into_iter();
                                     for ((task_idx, _), count) in entries.into_iter().zip(counts) {

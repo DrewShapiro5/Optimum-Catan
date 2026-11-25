@@ -17,10 +17,12 @@ After saving and replay-verifying all 2,000 games:
     cohort's lowest-validation `best.pt` into the next cohort. Never auto-deploys.
 """
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 import gzip
 import json
+import multiprocessing as mp
+import os
 from pathlib import Path
 import queue
 import random
@@ -250,8 +252,10 @@ def collect_neural_block(
     fixed_batch=None,
     dynamic_onnx_a=None,
     dynamic_onnx_b=None,
+    tail_over_dispatch=32,
 ):
     """Collect `target_games` completed games using native Rust GPU --pool."""
+    require(tail_over_dispatch >= 0, 'tail_over_dispatch must be >= 0')
     block_dir.mkdir(parents=True, exist_ok=True)
     completed, next_attempt = load_existing_completed(block_dir, target_games)
     if len(completed) >= target_games:
@@ -260,12 +264,12 @@ def collect_neural_block(
 
     eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
     remaining_needed = target_games - len(completed)
-    n_workers = min(workers, remaining_needed)
+    n_workers = min(workers, remaining_needed + tail_over_dispatch)
     if fixed_batch is None:
         fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
     print(
         f'\n[{block_name}] Collecting {remaining_needed} completed games '
-        f'(backend={gpu_backend}, w={n_workers}, b={coreml_batch}, fixed_b={fixed_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
+        f'(backend={gpu_backend}, w={n_workers}, over_dispatch={tail_over_dispatch}, b={coreml_batch}, fixed_b={fixed_batch}, s={gpu_streams}, l={mcts_lanes}, sims={protocol["simulations"]}, '
         f'setup_sims={eff_setup_sims}, setup_explore={setup_exploration_games}@T={setup_temperature})...',
         flush=True,
     )
@@ -382,28 +386,34 @@ def collect_neural_block(
             if mtype == 'error':
                 raise RuntimeError(f'CoreML pool error ({msg.get("game_id")}): {msg.get("error")}')
             elif mtype == 'events':
-                recorders[msg['game_id']].append(msg['events'])
+                if len(completed) < target_games:
+                    recorders[msg['game_id']].append(msg['events'])
             elif mtype == 'done':
                 gid = msg['game_id']
-                rec = recorders.pop(gid).finish(msg)
-                out_path = game_paths.pop(gid)
                 in_flight -= 1
-                if rec['status'] == 'completed' and len(completed) < target_games:
-                    compact.save_journal(out_path, rec)
-                    completed.append(selfplay.reference(out_path))
-                    if print_games or len(completed) % 50 == 0 or len(completed) == target_games:
-                        elapsed = time.perf_counter() - started
-                        print(
-                            f'  [{block_name}] {len(completed)}/{target_games} completed '
-                            f'(last: {rec["winner"]} in {rec["turns"]} turns | {elapsed/60.0:.1f} min)',
-                            flush=True,
-                        )
+                if len(completed) >= target_games:
+                    # Target already reached; skip Python replay for cancelled tail games.
+                    recorders.pop(gid, None)
+                    game_paths.pop(gid, None)
+                else:
+                    rec = recorders.pop(gid).finish(msg)
+                    out_path = game_paths.pop(gid)
+                    if rec['status'] == 'completed':
+                        compact.save_journal(out_path, rec)
+                        completed.append(selfplay.reference(out_path))
+                        if print_games or len(completed) % 50 == 0 or len(completed) == target_games:
+                            elapsed = time.perf_counter() - started
+                            print(
+                                f'  [{block_name}] {len(completed)}/{target_games} completed '
+                                f'(last: {rec["winner"]} in {rec["turns"]} turns | {elapsed/60.0:.1f} min)',
+                                flush=True,
+                            )
                 if len(completed) >= target_games:
                     stop_flag.touch()
                     if in_flight == 0 and not stdin_closed:
                         proc.stdin.close()
                         stdin_closed = True
-                elif len(completed) + in_flight < target_games:
+                elif len(completed) + in_flight < target_games + tail_over_dispatch:
                     dispatch_one()
             elif mtype == 'pool_metrics':
                 pool_metrics = msg.get('metrics', {})
@@ -453,8 +463,10 @@ def collect_jsettlers_block(
     print_games=False,
     fixed_batch=None,
     dynamic_learner_onnx=None,
+    tail_over_dispatch=32,
 ):
     """Collect `target_games` completed JSettlers vs Model games via native GPU --bridge-pool + pooled JVMs."""
+    require(tail_over_dispatch >= 0, 'tail_over_dispatch must be >= 0')
     block_dir.mkdir(parents=True, exist_ok=True)
     completed, next_attempt = load_existing_completed(block_dir, target_games)
     if len(completed) >= target_games:
@@ -463,7 +475,7 @@ def collect_jsettlers_block(
 
     eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
     remaining_needed = target_games - len(completed)
-    n_workers = min(workers, remaining_needed)
+    n_workers = min(workers, remaining_needed + tail_over_dispatch)
     n_jvms = min(jsettlers_jvms, n_workers)
     if fixed_batch is None:
         fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
@@ -635,16 +647,49 @@ def collect_jsettlers_block(
     return completed[:target_games], {'elapsed_seconds': elapsed, 'pool_metrics': pm}
 
 
-def derive_memory_data(refs, seed, limit=64):
-    chunks = []
-    for ref in refs:
-        path = ROOT / ref['path']
-        require(file_digest(path) == ref['sha256'], f'Journal modified: {path}')
-        with gzip.open(path, 'rt') as stream:
-            rec = json.load(stream)
-        d = fresh.derive(rec, limit, benchmark.named_seed(seed, rec['pair']['pair_id']))
-        if d is not None:
-            chunks.append(d)
+def _init_derive_worker():
+    torch.set_num_threads(1)
+
+
+def _derive_workers(n_items, load_workers=None):
+    if n_items <= 4:
+        return 1
+    if load_workers is not None and load_workers > 0:
+        return max(1, min(load_workers, n_items))
+    return max(1, min(os.cpu_count() or 1, 16, n_items))
+
+
+def _derive_val_game_task(item):
+    ref, seed, limit = item
+    path = ROOT / ref['path']
+    require(file_digest(path) == ref['sha256'], f'Journal modified: {path}')
+    with gzip.open(path, 'rt') as stream:
+        rec = json.load(stream)
+    return fresh.derive(rec, limit, benchmark.named_seed(seed, rec['pair']['pair_id']))
+
+
+def _derive_train_game_task(ref):
+    path = ROOT / ref['path']
+    sha = ref['sha256']
+    require(file_digest(path) == sha, f'Journal modified: {path}')
+    with gzip.open(path, 'rt') as stream:
+        rec = json.load(stream)
+    d, n_init = _derive_all_game_positions(rec)
+    if d is not None:
+        w4.check_arrays(d)
+    return sha, rec['pair']['pair_id'], d, n_init
+
+
+def derive_memory_data(refs, seed, limit=64, load_workers=None):
+    tasks = [(ref, seed, limit) for ref in refs]
+    n_workers = _derive_workers(len(tasks), load_workers)
+    if n_workers == 1:
+        derived = [_derive_val_game_task(t) for t in tasks]
+    else:
+        ctx = mp.get_context('spawn')
+        with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx, initializer=_init_derive_worker) as pool:
+            derived = list(pool.map(_derive_val_game_task, tasks, chunksize=4))
+    chunks = [d for d in derived if d is not None]
     return compact.MemoryData(chunks, refs)
 
 
@@ -663,7 +708,16 @@ def _derive_all_game_positions(rec):
 class ResamplingMemoryData:
     """Keeps all eligible training positions in RAM once and reslices per-game subsets in ms."""
 
-    def __init__(self, refs, base_seed, limit=64, resample_every=500, calls_per_step=2):
+    def __init__(
+        self,
+        refs,
+        base_seed,
+        limit=64,
+        resample_every=500,
+        calls_per_step=2,
+        derived_cache=None,
+        load_workers=None,
+    ):
         self.refs = list(refs)
         self.base_seed = base_seed
         self.limit = limit
@@ -674,21 +728,40 @@ class ResamplingMemoryData:
         self._sample_calls = 0
 
         t0 = time.perf_counter()
+        cache = derived_cache if derived_cache is not None else {}
+        uncached = []
+        seen_uncached = set()
+        cached_hits = 0
+        for ref in self.refs:
+            sha = ref['sha256']
+            if sha in cache:
+                require(file_digest(ROOT / ref['path']) == sha, f'Journal modified: {ROOT / ref["path"]}')
+                cached_hits += 1
+            elif sha not in seen_uncached:
+                seen_uncached.add(sha)
+                uncached.append(ref)
+
+        n_workers = _derive_workers(len(uncached), load_workers)
+        if uncached:
+            if n_workers == 1:
+                results = [_derive_train_game_task(ref) for ref in uncached]
+            else:
+                ctx = mp.get_context('spawn')
+                with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx, initializer=_init_derive_worker) as pool:
+                    results = list(pool.map(_derive_train_game_task, uncached, chunksize=8))
+            for sha, pair_id, d, n_init in results:
+                cache[sha] = (pair_id, d, n_init)
+
         chunks = []
         self._game_spans = []
         offset = 0
         for ref in self.refs:
-            path = ROOT / ref['path']
-            require(file_digest(path) == ref['sha256'], f'Journal modified: {path}')
-            with gzip.open(path, 'rt') as stream:
-                rec = json.load(stream)
-            d, n_init = _derive_all_game_positions(rec)
+            pair_id, d, n_init = cache[ref['sha256']]
             if d is None:
                 continue
-            w4.check_arrays(d)
             n_rows = len(d['value'])
             chunks.append(d)
-            self._game_spans.append((rec['pair']['pair_id'], offset, min(n_init, n_rows), n_rows))
+            self._game_spans.append((pair_id, offset, min(n_init, n_rows), n_rows))
             offset += n_rows
         require(chunks, 'No completed searched examples')
 
@@ -705,6 +778,7 @@ class ResamplingMemoryData:
         pool_bytes = sum(arr.nbytes for arr in self._pool.values()) + self._pool_family_mass.nbytes
         print(
             f'  [pool] Loaded {n_pool:,} eligible positions from {len(self._game_spans)} games '
+            f'({cached_hits} cached, {len(uncached)} derived via {n_workers}w) '
             f'into RAM ({pool_bytes / (1024**3):.2f} GB) in {time.perf_counter() - t0:.1f}s',
             flush=True,
         )
@@ -804,6 +878,7 @@ def run_one_cohort(
     frozen_onnx,
     protocol,
     args,
+    derived_cache=None,
 ):
     results_path = cohort_dir / 'results.json'
     if results_path.exists():
@@ -830,7 +905,7 @@ def run_one_cohort(
     onnx_dtype = 'float32' if (args.fp32 or args.gpu_backend != 'cuda') else 'float16'
     print(
         f'Collection        : {args.cnn_selfplay_games} CNN vs CNN + {args.jsettlers_cnn_games} JSettlers vs CNN '
-        f'(w{args.workers}/js-w{args.jsettlers_workers}-jvms{args.jsettlers_jvms}, b{args.coreml_batch}-fixed{eff_fixed_batch}-s{args.gpu_streams}-l{args.mcts_lanes}, '
+        f'(w{args.workers}/js-w{args.jsettlers_workers}-jvms{args.jsettlers_jvms}, over_dispatch={args.tail_over_dispatch}, b{args.coreml_batch}-fixed{eff_fixed_batch}-s{args.gpu_streams}-l{args.mcts_lanes}, '
         f'backend={args.gpu_backend}, dtype={onnx_dtype}, {args.simulations} sims, setup_sims={eff_setup_sims}, setup_explore={setup_exp_total}@T={args.setup_temperature}, '
         f'mcts_opponent={args.mcts_opponent}, vp_margin_alpha={args.vp_margin_alpha})',
         flush=True,
@@ -867,6 +942,7 @@ def run_one_cohort(
             fixed_batch=eff_fixed_batch,
             dynamic_onnx_a=cnn_dynamic_onnx,
             dynamic_onnx_b=cnn_dynamic_onnx,
+            tail_over_dispatch=args.tail_over_dispatch,
         )
     if args.jsettlers_cnn_games > 0:
         block_refs['jsettlers_vs_cnn'], block_stats['jsettlers_vs_cnn'] = collect_jsettlers_block(
@@ -883,6 +959,7 @@ def run_one_cohort(
             print_games=args.print_games,
             fixed_batch=eff_fixed_batch,
             dynamic_learner_onnx=cnn_dynamic_onnx,
+            tail_over_dispatch=args.tail_over_dispatch,
         )
     collect_seconds = time.perf_counter() - t_collect
 
@@ -906,6 +983,7 @@ def run_one_cohort(
             'workers': args.workers,
             'jsettlers_workers': args.jsettlers_workers,
             'jsettlers_jvms': args.jsettlers_jvms,
+            'tail_over_dispatch': args.tail_over_dispatch,
             'gpu_backend': args.gpu_backend,
             'gpu_dtype': onnx_dtype,
             'coreml_batch': args.coreml_batch,
@@ -934,8 +1012,10 @@ def run_one_cohort(
     # Sliding replay buffer: combine train splits from the last `replay_cohorts` cohorts
     # while keeping validation strictly from the current cohort (no leakage).
     replay_train_refs = []
+    next_cache_refs = []
     included_cohorts = []
     first_replay = max(1, cohort_idx - args.replay_cohorts + 1)
+    first_next_replay = max(1, cohort_idx + 1 - args.replay_cohorts + 1)
     for past_idx in range(first_replay, cohort_idx):
         past_manifest_path = args.output / f'cohort-{past_idx:03d}' / 'manifest.json'
         if past_manifest_path.exists():
@@ -944,7 +1024,11 @@ def run_one_cohort(
             if past_train:
                 replay_train_refs.extend(past_train)
                 included_cohorts.append(past_idx)
+                if past_idx >= first_next_replay:
+                    next_cache_refs.extend(past_train)
     replay_train_refs.extend(splits['train'])
+    if cohort_idx >= first_next_replay:
+        next_cache_refs.extend(splits['train'])
     included_cohorts.append(cohort_idx)
     manifest['replay_window'] = {
         'replay_cohorts': args.replay_cohorts,
@@ -977,14 +1061,27 @@ def run_one_cohort(
         f'resample_every={args.resample_every} updates; validation fixed)...',
         flush=True,
     )
+    load_workers = getattr(args, 'load_workers', 0) or None
     train_data = ResamplingMemoryData(
         replay_train_refs,
         cohort_seed,
         limit=args.positions_per_game,
         resample_every=args.resample_every,
         calls_per_step=2,
+        derived_cache=derived_cache,
+        load_workers=load_workers,
     )
-    val_data = derive_memory_data(splits['validation'], cohort_seed, limit=args.positions_per_game)
+    if derived_cache is not None:
+        keep_shas = {r['sha256'] for r in next_cache_refs}
+        for sha in list(derived_cache):
+            if sha not in keep_shas:
+                del derived_cache[sha]
+    val_data = derive_memory_data(
+        splits['validation'],
+        cohort_seed,
+        limit=args.positions_per_game,
+        load_workers=load_workers,
+    )
     print(
         f'Active positions: train={train_data.summary["rows"]:,} '
         f'(in-RAM pool={train_data.summary["pool_rows"]:,}), '
@@ -1097,6 +1194,8 @@ def main():
     parser.add_argument('--workers', type=int, default=128, help='Workers for CNN vs CNN CoreML pool')
     parser.add_argument('--jsettlers-workers', type=int, default=None, help='Workers for JSettlers vs CNN CoreML bridge-pool (default: matches --workers)')
     parser.add_argument('--jsettlers-jvms', type=int, default=12, help='Number of parallel Java JSettlers Bridge JVMs (default: 12)')
+    parser.add_argument('--tail-over-dispatch', type=int, default=32, help='Extra games kept in flight near block completion to avoid batch=1 tail stalls (default: 32)')
+    parser.add_argument('--load-workers', type=int, default=0, help='Parallel Python worker processes for loading/deriving games into RAM (0 = auto)')
     parser.add_argument('--gpu-backend', choices=('coreml', 'cuda', 'cpu-batch'), default=default_gpu_backend(), help='Native Rust ONNX execution provider for game collection (default: cuda if available, else coreml on macOS, else cpu-batch)')
     parser.add_argument('--train-device', choices=('auto', 'cuda', 'mps', 'cpu'), default='auto', help='PyTorch device for W4 training and evaluation (default: auto)')
     parser.add_argument('--coreml-batch', '--batch-size', dest='coreml_batch', type=int, default=64, help='Max/static GPU inference batch size (default: 64)')
@@ -1122,6 +1221,8 @@ def main():
     if args.jsettlers_workers is None:
         args.jsettlers_workers = args.workers
     require(args.n_cohorts > 0, '--n-cohorts must be >= 1')
+    require(args.tail_over_dispatch >= 0, '--tail-over-dispatch must be >= 0')
+    require(args.load_workers >= 0, '--load-workers must be >= 0')
     require(0 < args.validation_fraction < 1, '--validation-fraction must be between 0 and 1 (exclusive)')
     require(0.0 <= args.vp_margin_alpha <= 0.5, '--vp-margin-alpha must be between 0.0 and 0.5')
     require(args.value_loss_weight > 0, '--value-loss-weight must be > 0')
@@ -1162,6 +1263,7 @@ def main():
     frozen_onnx = export_checkpoint(frozen_ref)
 
     cohort_summaries = []
+    derived_cache = {}
     with benchmark.exclusive_benchmark():
         for cohort_idx in range(1, args.n_cohorts + 1):
             cohort_dir = args.output / f'cohort-{cohort_idx:03d}'
@@ -1177,6 +1279,7 @@ def main():
                 frozen_onnx,
                 protocol,
                 args,
+                derived_cache=derived_cache,
             )
             cohort_summaries.append(summary)
 

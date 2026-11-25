@@ -350,7 +350,8 @@ def run_python_matchup(schedule, candidate_ref, opponent_ref, opponent_kind, fro
 
 def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations=None,
                          model_ids=None, lanes=1, virtual_loss=1.0, max_turns=1000, max_actions=10000,
-                         mcts_opponent='self-policy', opp_mcts_opponent='self-policy'):
+                         mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
+                         cand_dyn_onnx=None, opp_dyn_onnx=None):
     if opp_simulations is None:
         opp_simulations = simulations
     pair = item['pair']
@@ -396,6 +397,8 @@ def _native_eval_request(item, cand_onnx, opp_onnx, frozen_onnx, simulations, op
         req['seat_mcts_opponent'] = seat_opp
     if mids is not None:
         req['model_ids'] = mids
+    if cand_dyn_onnx is not None and opp_dyn_onnx is not None:
+        req['dynamic_models'] = [str(cand_dyn_onnx if c == cand_color else opp_dyn_onnx) for c in colors]
     return req, colors
 
 
@@ -415,14 +418,22 @@ def run_native_model_matchup(schedule, candidate_ref, opponent_ref, frozen_ref, 
         if use_static:
             cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch, dtype=eff_dtype)
             opp_onnx = cand_onnx if same_model else export_checkpoint_coreml_static(opponent_ref, batch_size=coreml_batch, dtype=eff_dtype)
+            if backend != 'coreml':
+                cand_dyn_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype)
+                opp_dyn_onnx = cand_dyn_onnx if same_model else export_checkpoint_dynamic(opponent_ref, dtype=eff_dtype)
+            else:
+                cand_dyn_onnx = None
+                opp_dyn_onnx = None
         else:
             cand_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype)
             opp_onnx = cand_onnx if same_model else export_checkpoint_dynamic(opponent_ref, dtype=eff_dtype)
+            cand_dyn_onnx = None
+            opp_dyn_onnx = None
         return _run_native_coreml_pool(
             binary, schedule, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations,
             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes, virtual_loss, max_turns, max_actions,
             gpu_backend=backend, mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
-            fixed_batch=eff_fixed,
+            fixed_batch=eff_fixed, cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
         )
 
     cand_onnx = export_checkpoint(candidate_ref)
@@ -540,7 +551,7 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
                             workers, coreml_batch, wait_us, gpu_streams, mcts_lanes,
                             virtual_loss, max_turns, max_actions,
                             gpu_backend='coreml', mcts_opponent='self-policy', opp_mcts_opponent='self-policy',
-                            fixed_batch=None):
+                            fixed_batch=None, cand_dyn_onnx=None, opp_dyn_onnx=None):
     n_workers = min(workers, len(schedule))
     if fixed_batch is None:
         fixed_batch = coreml_batch if gpu_backend == 'coreml' else 0
@@ -567,6 +578,7 @@ def _run_native_coreml_pool(binary, schedule, cand_onnx, opp_onnx, frozen_onnx, 
             item, cand_onnx, opp_onnx, frozen_onnx, simulations, opp_simulations=opp_simulations,
             lanes=mcts_lanes, virtual_loss=virtual_loss, max_turns=max_turns, max_actions=max_actions,
             mcts_opponent=mcts_opponent, opp_mcts_opponent=opp_mcts_opponent,
+            cand_dyn_onnx=cand_dyn_onnx, opp_dyn_onnx=opp_dyn_onnx,
         )
         meta_by_gid[req['game_id']] = (item, colors)
         proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
@@ -710,8 +722,10 @@ def run_native_jsettlers_coreml(
     fixed_batch = coreml_batch if use_static else 0
     if use_static:
         cand_onnx = export_checkpoint_coreml_static(candidate_ref, batch_size=coreml_batch, dtype=eff_dtype)
+        cand_dyn_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype) if gpu_backend != 'coreml' else None
     else:
         cand_onnx = export_checkpoint_dynamic(candidate_ref, dtype=eff_dtype)
+        cand_dyn_onnx = None
     frozen_onnx = export_checkpoint(frozen_ref)
     n_workers = min(workers, len(schedule))
     bridge = NativeBridgePool(binary, n_workers, gpu_backend, coreml_batch, wait_us, gpu_streams, fixed_batch=fixed_batch)
@@ -741,7 +755,9 @@ def run_native_jsettlers_coreml(
         }
         bridge.call(
             op='init', game_id=gid, task=task, learner_seat=learner_seat,
-            model=str(cand_onnx), frozen=str(frozen_onnx),
+            model=str(cand_onnx),
+            dynamic_model=(str(cand_dyn_onnx) if cand_dyn_onnx is not None else None),
+            frozen=str(frozen_onnx),
             simulations=simulations, lanes=mcts_lanes, virtual_loss=virtual_loss, eval_mode=True,
             mcts_opponent=mcts_opponent,
         )

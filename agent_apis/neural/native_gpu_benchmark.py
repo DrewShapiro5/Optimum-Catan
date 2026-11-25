@@ -537,6 +537,7 @@ def run_timed_inprocess_pool(
     mcts_opponent='self-policy',
     print_games=False,
     setup_simulations=None,
+    fallback_dynamic_onnx=None,
 ):
     """Run pure-Rust multi-worker pool with in-process CoreML/ONNX batch queue."""
     eff_setup_sims = setup_simulations if setup_simulations is not None else protocol['simulations']
@@ -639,6 +640,8 @@ def run_timed_inprocess_pool(
             'virtual_loss': virtual_loss,
             'mcts_opponent': mcts_opponent,
         }
+        if fallback_dynamic_onnx is not None:
+            req['dynamic_models'] = [str(fallback_dynamic_onnx), str(fallback_dynamic_onnx)]
         try:
             proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
             proc.stdin.flush()
@@ -821,6 +824,11 @@ def main():
         export_checkpoint_coreml_static(candidate, batch_size=args.cuda_batch, dtype=gpu_dtype)
         if args.cuda_fixed_batch
         else export_checkpoint_dynamic(candidate, dtype=gpu_dtype)
+    )
+    cuda_dynamic_onnx = (
+        export_checkpoint_dynamic(candidate, dtype=gpu_dtype)
+        if (not args.skip_cuda and args.cuda_fixed_batch)
+        else None
     )
 
     parity = check_gpu_parity(candidate, device='auto', dtype=gpu_dtype)
@@ -1008,6 +1016,7 @@ def main():
                         mcts_opponent=args.mcts_opponent,
                         print_games=args.print_games,
                         setup_simulations=args.setup_simulations,
+                        fallback_dynamic_onnx=cuda_dynamic_onnx,
                     )
                     record_result(res)
                     bs = res['batch_stats']

@@ -16,6 +16,7 @@ use std::io::{Read, Write as IoWrite};
 use std::net::TcpStream;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -276,6 +277,8 @@ pub struct BatchMetrics {
     pub requests: usize,
     pub rows: usize,
     pub batches: usize,
+    pub dynamic_batches: usize,
+    pub dynamic_rows: usize,
     pub forward_seconds: f64,
     pub queue_window_seconds: f64,
     pub streams: usize,
@@ -284,6 +287,7 @@ pub struct BatchMetrics {
 
 struct InferRequest {
     model_path: String,
+    fallback_model_path: Option<String>,
     features: Vec<f32>,
     slot: usize,
     reply: SyncSender<(usize, Result<(Vec<f32>, f32), String>)>,
@@ -294,13 +298,40 @@ struct SharedQueueState {
     closed: bool,
 }
 
+struct QueueCounters {
+    queued_items: AtomicUsize,
+    active_games: AtomicUsize,
+    tracks_active: AtomicBool,
+}
+
+/// RAII guard tracking an active concurrent game in `BatchQueue`.
+pub struct ActiveGameGuard {
+    counters: Arc<QueueCounters>,
+}
+
+impl Drop for ActiveGameGuard {
+    fn drop(&mut self) {
+        self.counters.active_games.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 #[derive(Clone)]
 pub struct QueueClient {
     shared: Arc<(Mutex<SharedQueueState>, Condvar)>,
+    counters: Arc<QueueCounters>,
 }
 
 impl QueueClient {
     pub fn predict(&self, model_path: &str, features: Vec<f32>) -> Result<(Vec<f32>, f32), String> {
+        self.predict_with_fallback(model_path, None, features)
+    }
+
+    pub fn predict_with_fallback(
+        &self,
+        model_path: &str,
+        fallback_model_path: Option<&str>,
+        features: Vec<f32>,
+    ) -> Result<(Vec<f32>, f32), String> {
         let (rtx, rrx) = mpsc::sync_channel(1);
         {
             let (lock, cvar) = &*self.shared;
@@ -310,10 +341,14 @@ impl QueueClient {
             }
             guard.items.push_back(InferRequest {
                 model_path: model_path.to_string(),
+                fallback_model_path: fallback_model_path.map(str::to_string),
                 features,
                 slot: 0,
                 reply: rtx,
             });
+            self.counters
+                .queued_items
+                .store(guard.items.len(), Ordering::Release);
             cvar.notify_one();
         }
         let (_, res) = rrx
@@ -327,13 +362,26 @@ impl QueueClient {
         model_path: &str,
         batch: Vec<Vec<f32>>,
     ) -> Result<Vec<(Vec<f32>, f32)>, String> {
+        self.predict_batch_with_fallback(model_path, None, batch)
+    }
+
+    pub fn predict_batch_with_fallback(
+        &self,
+        model_path: &str,
+        fallback_model_path: Option<&str>,
+        batch: Vec<Vec<f32>>,
+    ) -> Result<Vec<(Vec<f32>, f32)>, String> {
         let k = batch.len();
         if k == 0 {
             return Ok(vec![]);
         }
         if k == 1 {
             let one = batch.into_iter().next().unwrap();
-            return Ok(vec![self.predict(model_path, one)?]);
+            return Ok(vec![self.predict_with_fallback(
+                model_path,
+                fallback_model_path,
+                one,
+            )?]);
         }
         let (rtx, rrx) = mpsc::sync_channel(k);
         {
@@ -342,14 +390,19 @@ impl QueueClient {
             if guard.closed {
                 return Err("In-process GPU inference queue closed".to_string());
             }
+            let fallback_owned = fallback_model_path.map(str::to_string);
             for (slot, features) in batch.into_iter().enumerate() {
                 guard.items.push_back(InferRequest {
                     model_path: model_path.to_string(),
+                    fallback_model_path: fallback_owned.clone(),
                     features,
                     slot,
                     reply: rtx.clone(),
                 });
             }
+            self.counters
+                .queued_items
+                .store(guard.items.len(), Ordering::Release);
             cvar.notify_all();
         }
         drop(rtx);
@@ -474,9 +527,126 @@ fn run_batch(
     Ok(results)
 }
 
+fn drain_pending(
+    guard: &mut SharedQueueState,
+    pending: &mut Vec<InferRequest>,
+    effective_max: usize,
+    queued_items: &AtomicUsize,
+) {
+    while pending.len() < effective_max {
+        if let Some(req) = guard.items.pop_front() {
+            pending.push(req);
+        } else {
+            break;
+        }
+    }
+    queued_items.store(guard.items.len(), Ordering::Release);
+}
+
+fn should_use_dynamic_fallback(
+    backend: InProcessBackend,
+    fixed_batch: usize,
+    actual_rows: usize,
+    tracked_active: bool,
+    active_games: usize,
+) -> bool {
+    if fixed_batch == 0 || backend == InProcessBackend::CoreML || actual_rows >= fixed_batch {
+        return false;
+    }
+    let small_game_limit = (fixed_batch / 2).max(1);
+    !tracked_active || active_games <= small_game_limit
+}
+
+fn should_skip_coalesce_wait(
+    wait_duration: Duration,
+    pending_len: usize,
+    effective_max: usize,
+    closed: bool,
+    tracked_active: bool,
+    active_games: usize,
+) -> bool {
+    wait_duration.is_zero()
+        || pending_len >= effective_max
+        || closed
+        || (tracked_active && active_games <= 1)
+}
+
+fn wait_for_coalesce_window<'a>(
+    lock: &'a Mutex<SharedQueueState>,
+    cvar: &Condvar,
+    mut guard: std::sync::MutexGuard<'a, SharedQueueState>,
+    pending: &mut Vec<InferRequest>,
+    effective_max: usize,
+    wait_duration: Duration,
+    counters: &QueueCounters,
+) -> (std::sync::MutexGuard<'a, SharedQueueState>, f64, usize, bool) {
+    let tracked = counters.tracks_active.load(Ordering::Acquire);
+    let active_now = counters.active_games.load(Ordering::Acquire);
+    let window_start = Instant::now();
+
+    if !should_skip_coalesce_wait(
+        wait_duration,
+        pending.len(),
+        effective_max,
+        guard.closed,
+        tracked,
+        active_now,
+    ) {
+        // Sub-millisecond Condvar::wait_timeout sleeps until the next
+        // OS timer tick (~1-15.6 ms on Windows); spin-wait atomically
+        // for short windows instead so single/tail batches aren't stalled.
+        if wait_duration <= Duration::from_millis(2) {
+            drop(guard);
+            loop {
+                if counters.queued_items.load(Ordering::Acquire) > 0 {
+                    guard = lock.lock().unwrap();
+                    drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                    let still_active = counters.active_games.load(Ordering::Acquire);
+                    if should_skip_coalesce_wait(
+                        wait_duration,
+                        pending.len(),
+                        effective_max,
+                        guard.closed,
+                        tracked,
+                        still_active,
+                    ) || window_start.elapsed() >= wait_duration
+                    {
+                        break;
+                    }
+                    drop(guard);
+                } else if window_start.elapsed() >= wait_duration {
+                    guard = lock.lock().unwrap();
+                    drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                    break;
+                } else {
+                    std::hint::spin_loop();
+                }
+            }
+        } else {
+            while pending.len() < effective_max && !guard.closed {
+                let elapsed = window_start.elapsed();
+                if elapsed >= wait_duration {
+                    break;
+                }
+                let (g, timeout_res) = cvar.wait_timeout(guard, wait_duration - elapsed).unwrap();
+                guard = g;
+                drain_pending(&mut guard, pending, effective_max, &counters.queued_items);
+                let still_active = counters.active_games.load(Ordering::Acquire);
+                if timeout_res.timed_out() || (tracked && still_active <= 1) {
+                    break;
+                }
+            }
+        }
+    }
+
+    let observed = counters.active_games.load(Ordering::Acquire);
+    (guard, window_start.elapsed().as_secs_f64(), observed, tracked)
+}
+
 /// Multi-stream in-process batched GPU inference owner pool.
 pub struct BatchQueue {
     shared: Arc<(Mutex<SharedQueueState>, Condvar)>,
+    counters: Arc<QueueCounters>,
     metrics: Arc<Mutex<BatchMetrics>>,
     handles: Vec<JoinHandle<()>>,
 }
@@ -502,6 +672,11 @@ impl BatchQueue {
             }),
             Condvar::new(),
         ));
+        let counters = Arc::new(QueueCounters {
+            queued_items: AtomicUsize::new(0),
+            active_games: AtomicUsize::new(0),
+            tracks_active: AtomicBool::new(false),
+        });
         let metrics = Arc::new(Mutex::new(BatchMetrics {
             streams: num_streams,
             ..BatchMetrics::default()
@@ -511,6 +686,7 @@ impl BatchQueue {
         let mut handles = Vec::with_capacity(num_streams);
         for stream_id in 0..num_streams {
             let shared_bg = Arc::clone(&shared);
+            let counters_bg = Arc::clone(&counters);
             let metrics_bg = Arc::clone(&metrics);
             let handle = std::thread::Builder::new()
                 .name(format!("gpu-batch-owner-{stream_id}"))
@@ -520,7 +696,7 @@ impl BatchQueue {
                     let mut pending: Vec<InferRequest> = Vec::with_capacity(effective_max);
 
                     loop {
-                        let window_secs = {
+                        let (window_secs, observed_active, tracked_active) = {
                             let (lock, cvar) = &*shared_bg;
                             let mut guard = lock.lock().unwrap();
                             while guard.items.is_empty() && !guard.closed {
@@ -529,38 +705,27 @@ impl BatchQueue {
                             if guard.items.is_empty() && guard.closed {
                                 break;
                             }
-                            while pending.len() < effective_max {
-                                if let Some(req) = guard.items.pop_front() {
-                                    pending.push(req);
-                                } else {
-                                    break;
-                                }
-                            }
-                            let window_start = Instant::now();
-                            while pending.len() < effective_max && !guard.closed {
-                                let elapsed = window_start.elapsed();
-                                if elapsed >= wait_duration {
-                                    break;
-                                }
-                                let (g, timeout_res) =
-                                    cvar.wait_timeout(guard, wait_duration - elapsed).unwrap();
-                                guard = g;
-                                while pending.len() < effective_max {
-                                    if let Some(req) = guard.items.pop_front() {
-                                        pending.push(req);
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                if timeout_res.timed_out() {
-                                    break;
-                                }
-                            }
+                            drain_pending(
+                                &mut guard,
+                                &mut pending,
+                                effective_max,
+                                &counters_bg.queued_items,
+                            );
+                            let (g, secs, observed, tracked) = wait_for_coalesce_window(
+                                lock,
+                                cvar,
+                                guard,
+                                &mut pending,
+                                effective_max,
+                                wait_duration,
+                                &counters_bg,
+                            );
+                            guard = g;
                             // If items remain for another stream, wake one up before releasing lock.
                             if !guard.items.is_empty() {
                                 cvar.notify_one();
                             }
-                            window_start.elapsed().as_secs_f64()
+                            (secs, observed, tracked)
                         };
 
                         if pending.is_empty() {
@@ -577,19 +742,53 @@ impl BatchQueue {
                         }
 
                         for (model_path, mut group) in grouped {
-                            if !sessions.contains_key(&model_path) {
-                                match batched_session(
-                                    Path::new(&model_path),
-                                    backend,
-                                    fixed_batch > 0,
+                            let n = group.len();
+                            let fallback_path = if should_use_dynamic_fallback(
+                                backend,
+                                fixed_batch,
+                                n,
+                                tracked_active,
+                                observed_active,
+                            ) {
+                                group.iter().find_map(|r| r.fallback_model_path.as_ref()).cloned()
+                            } else {
+                                None
+                            };
+                            let used_dynamic = fallback_path.is_some();
+                            let (run_path, run_fixed_batch) = match fallback_path {
+                                Some(dyn_path) => (dyn_path, 0),
+                                None => (model_path, fixed_batch),
+                            };
+                            if !sessions.contains_key(&run_path) {
+                                let init_res = match std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| {
+                                        batched_session(
+                                            Path::new(&run_path),
+                                            backend,
+                                            run_fixed_batch > 0,
+                                        )
+                                    }),
                                 ) {
+                                    Ok(res) => res.map_err(|e| e.to_string()),
+                                    Err(payload) => {
+                                        let msg = payload
+                                            .downcast_ref::<&str>()
+                                            .copied()
+                                            .or_else(|| {
+                                                payload.downcast_ref::<String>().map(String::as_str)
+                                            })
+                                            .unwrap_or("GPU session init panicked");
+                                        Err(msg.to_string())
+                                    }
+                                };
+                                match init_res {
                                     Ok(s) => {
-                                        sessions.insert(model_path.clone(), s);
+                                        sessions.insert(run_path.clone(), s);
                                     }
                                     Err(e) => {
                                         let msg = format!(
                                             "Failed to initialize {:?} session for {}: {}",
-                                            backend, model_path, e
+                                            backend, run_path, e
                                         );
                                         for req in group {
                                             let _ = req.reply.send((req.slot, Err(msg.clone())));
@@ -598,16 +797,15 @@ impl BatchQueue {
                                     }
                                 }
                             }
-                            let session = sessions.get_mut(&model_path).unwrap();
+                            let session = sessions.get_mut(&run_path).unwrap();
                             let features: Vec<Vec<f32>> = group
                                 .iter_mut()
                                 .map(|r| std::mem::take(&mut r.features))
                                 .collect();
-                            let n = features.len();
                             let fwd_start = Instant::now();
                             let batch_res = match std::panic::catch_unwind(
                                 std::panic::AssertUnwindSafe(|| {
-                                    run_batch(session, &features, fixed_batch)
+                                    run_batch(session, &features, run_fixed_batch)
                                 }),
                             ) {
                                 Ok(res) => res,
@@ -628,6 +826,10 @@ impl BatchQueue {
                                 m.requests += n;
                                 m.rows += n;
                                 m.batches += 1;
+                                if used_dynamic {
+                                    m.dynamic_batches += 1;
+                                    m.dynamic_rows += n;
+                                }
                                 m.forward_seconds += fwd_secs;
                                 m.queue_window_seconds += window_secs;
                                 *m.batch_rows_histogram.entry(n).or_insert(0) += 1;
@@ -654,6 +856,7 @@ impl BatchQueue {
 
         Self {
             shared,
+            counters,
             metrics,
             handles,
         }
@@ -662,6 +865,15 @@ impl BatchQueue {
     pub fn client(&self) -> QueueClient {
         QueueClient {
             shared: Arc::clone(&self.shared),
+            counters: Arc::clone(&self.counters),
+        }
+    }
+
+    pub fn active_guard(&self) -> ActiveGameGuard {
+        self.counters.tracks_active.store(true, Ordering::Release);
+        self.counters.active_games.fetch_add(1, Ordering::AcqRel);
+        ActiveGameGuard {
+            counters: Arc::clone(&self.counters),
         }
     }
 
@@ -676,5 +888,143 @@ impl BatchQueue {
             let _ = h.join();
         }
         self.metrics.lock().unwrap().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skips_coalesce_wait_when_single_active_game() {
+        let shared = Mutex::new(SharedQueueState {
+            items: VecDeque::new(),
+            closed: false,
+        });
+        let cvar = Condvar::new();
+        let counters = QueueCounters {
+            queued_items: AtomicUsize::new(0),
+            active_games: AtomicUsize::new(1),
+            tracks_active: AtomicBool::new(true),
+        };
+        let mut pending = Vec::new();
+        let guard = shared.lock().unwrap();
+        let (_g, secs, observed, tracked) = wait_for_coalesce_window(
+            &shared,
+            &cvar,
+            guard,
+            &mut pending,
+            128,
+            Duration::from_millis(50),
+            &counters,
+        );
+        assert!(tracked);
+        assert_eq!(observed, 1);
+        assert!(secs < 0.005, "Solo active game waited {secs}s");
+    }
+
+    #[test]
+    fn active_guard_tracks_and_drops_count() {
+        let q = BatchQueue::start(InProcessBackend::CpuBatch, 64, 50, 0, 1);
+        assert!(!q.counters.tracks_active.load(Ordering::Acquire));
+        let g1 = q.active_guard();
+        assert!(q.counters.tracks_active.load(Ordering::Acquire));
+        assert_eq!(q.counters.active_games.load(Ordering::Acquire), 1);
+        {
+            let _g2 = q.active_guard();
+            assert_eq!(q.counters.active_games.load(Ordering::Acquire), 2);
+        }
+        assert_eq!(q.counters.active_games.load(Ordering::Acquire), 1);
+        drop(g1);
+        assert_eq!(q.counters.active_games.load(Ordering::Acquire), 0);
+        let _ = q.shutdown();
+    }
+
+    #[test]
+    fn dynamic_fallback_policy_matches_small_game_counts() {
+        assert!(!should_use_dynamic_fallback(
+            InProcessBackend::CoreML,
+            128,
+            1,
+            true,
+            1
+        ));
+        assert!(!should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            0,
+            1,
+            true,
+            1
+        ));
+        assert!(!should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            128,
+            128,
+            true,
+            1
+        ));
+        assert!(!should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            128,
+            16,
+            true,
+            256
+        ));
+        assert!(should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            128,
+            16,
+            true,
+            64
+        ));
+        assert!(should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            128,
+            1,
+            true,
+            1
+        ));
+        assert!(should_use_dynamic_fallback(
+            InProcessBackend::Cuda,
+            128,
+            8,
+            false,
+            0
+        ));
+    }
+
+    #[test]
+    fn sub_ms_spin_wait_completes_quickly() {
+        let shared = Mutex::new(SharedQueueState {
+            items: VecDeque::new(),
+            closed: false,
+        });
+        let cvar = Condvar::new();
+        let counters = QueueCounters {
+            queued_items: AtomicUsize::new(0),
+            active_games: AtomicUsize::new(2),
+            tracks_active: AtomicBool::new(true),
+        };
+        let mut pending = Vec::new();
+        let guard = shared.lock().unwrap();
+        let started = Instant::now();
+        let (_g, secs, observed, tracked) = wait_for_coalesce_window(
+            &shared,
+            &cvar,
+            guard,
+            &mut pending,
+            128,
+            Duration::from_micros(50),
+            &counters,
+        );
+        let elapsed = started.elapsed();
+        assert!(tracked);
+        assert_eq!(observed, 2);
+        assert!(
+            elapsed < Duration::from_millis(2) && secs < 0.002,
+            "50us spin wait window took {:?} (secs={})",
+            elapsed,
+            secs
+        );
     }
 }

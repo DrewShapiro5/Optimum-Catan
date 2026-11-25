@@ -206,6 +206,8 @@ struct Request {
     setup_simulations: Option<usize>,
     #[serde(default)]
     setup_temperature: Option<f64>,
+    #[serde(default)]
+    dynamic_models: Option<[String; 2]>,
 }
 
 fn emit(mut value: serde_json::Value, game_id: Option<&str>) -> Result<(), String> {
@@ -557,6 +559,7 @@ struct PoolGame {
     game_id: Option<String>,
     task_id: String,
     keys: [(String, String, u32); 2],
+    dynamic_models: [Option<String>; 2],
     need_frozen: [bool; 2],
     seat_opts: [Options; 2],
     enc: Encoder,
@@ -579,6 +582,7 @@ struct PoolGame {
     setup_simulations: Option<usize>,
     setup_temperature: Option<f64>,
     active_decision: Option<ActiveDecision>,
+    _active_guard: Option<batch_gpu::ActiveGameGuard>,
 }
 
 struct ActiveDecision {
@@ -592,6 +596,7 @@ struct ActiveDecision {
 enum PoolStep {
     NeedEval {
         model_path: String,
+        fallback_model: Option<String>,
         features: Vec<Vec<f32>>,
     },
     Finished,
@@ -611,6 +616,10 @@ impl PoolGame {
             (r.models[0].clone(), r.frozen.clone(), model_ids[0]),
             (r.models[1].clone(), r.frozen.clone(), model_ids[1]),
         ];
+        let dynamic_models = match &r.dynamic_models {
+            Some([d0, d1]) => [Some(d0.clone()), Some(d1.clone())],
+            None => [None, None],
+        };
         let seat_opts = parse_seat_opts(&r);
         let need_frozen = [
             seat_opts[0].mcts_opponent == MctsOpponent::FrozenMlp,
@@ -637,6 +646,7 @@ impl PoolGame {
             game_id,
             task_id: t.id.clone(),
             keys,
+            dynamic_models,
             need_frozen,
             seat_opts,
             enc,
@@ -659,6 +669,7 @@ impl PoolGame {
             setup_simulations: r.setup_simulations,
             setup_temperature: r.setup_temperature,
             active_decision: None,
+            _active_guard: None,
         })
     }
 
@@ -752,6 +763,7 @@ impl PoolGame {
                 match dec.stepper.step(&self.enc, models, dec.reply.take())? {
                     search::StepOutcome::NeedCandidate { stepper, features } => {
                         let model_path = self.keys[dec.actor].0.clone();
+                        let fallback_model = self.dynamic_models[dec.actor].clone();
                         self.active_decision = Some(ActiveDecision {
                             actor: dec.actor,
                             opt_sims: dec.opt_sims,
@@ -761,6 +773,7 @@ impl PoolGame {
                         });
                         return Ok(PoolStep::NeedEval {
                             model_path,
+                            fallback_model,
                             features,
                         });
                     }
@@ -860,7 +873,10 @@ fn serve_pool(
     streams: usize,
 ) -> Result<(), String> {
     let batch_queue = batch_gpu::BatchQueue::start(backend, max_batch, wait_us, fixed_batch, streams);
-    let work_queue = Arc::new((Mutex::new((VecDeque::<Request>::new(), false)), Condvar::new()));
+    let work_queue = Arc::new((
+        Mutex::new((VecDeque::<(Request, batch_gpu::ActiveGameGuard)>::new(), false)),
+        Condvar::new(),
+    ));
     let cpu_threads = pool_thread_count(workers);
 
     let mut handles = Vec::with_capacity(cpu_threads);
@@ -884,12 +900,15 @@ fn serve_pool(
                             guard = cvar.wait(guard).unwrap();
                         }
                         while active.len() < slot_cap {
-                            if let Some(req) = guard.0.pop_front() {
+                            if let Some((req, active_guard)) = guard.0.pop_front() {
                                 let gid = req.game_id.clone();
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     PoolGame::new(req, &mut models_cache, &provider)
                                 })) {
-                                    Ok(Ok(g)) => active.push(g),
+                                    Ok(Ok(mut g)) => {
+                                        g._active_guard = Some(active_guard);
+                                        active.push(g);
+                                    }
                                     Ok(Err(error)) => {
                                         let _ = emit(
                                             serde_json::json!({"type":"error","error":error}),
@@ -919,7 +938,7 @@ fn serve_pool(
                         break;
                     }
 
-                    let mut pending_by_model: HashMap<String, Vec<(usize, Vec<Vec<f32>>)>> =
+                    let mut pending_by_model: HashMap<(String, Option<String>), Vec<(usize, Vec<Vec<f32>>)>> =
                         HashMap::new();
                     let mut idx = 0;
                     while idx < active.len() {
@@ -930,10 +949,11 @@ fn serve_pool(
                         match res {
                             Ok(Ok(PoolStep::NeedEval {
                                 model_path,
+                                fallback_model,
                                 features,
                             })) => {
                                 pending_by_model
-                                    .entry(model_path)
+                                    .entry((model_path, fallback_model))
                                     .or_default()
                                     .push((idx, features));
                                 idx += 1;
@@ -960,14 +980,18 @@ fn serve_pool(
 
                     if !pending_by_model.is_empty() {
                         let mut failed_indices: Vec<(usize, String)> = Vec::new();
-                        for (model_path, entries) in pending_by_model {
+                        for ((model_path, fallback_model), entries) in pending_by_model {
                             let mut flat = Vec::new();
                             let mut counts = Vec::with_capacity(entries.len());
                             for (_, feats) in &entries {
                                 counts.push(feats.len());
                                 flat.extend(feats.iter().cloned());
                             }
-                            match client.predict_batch(&model_path, flat) {
+                            match client.predict_batch_with_fallback(
+                                &model_path,
+                                fallback_model.as_deref(),
+                                flat,
+                            ) {
                                 Ok(outputs) => {
                                     let mut iter = outputs.into_iter();
                                     for ((game_idx, _), count) in entries.into_iter().zip(counts) {
@@ -1021,9 +1045,10 @@ fn serve_pool(
         }
         match serde_json::from_str::<Request>(&line) {
             Ok(req) => {
+                let guard_item = batch_queue.active_guard();
                 let (lock, cvar) = &*work_queue;
                 let mut guard = lock.lock().unwrap();
-                guard.0.push_back(req);
+                guard.0.push_back((req, guard_item));
                 cvar.notify_one();
             }
             Err(e) => {
@@ -1064,6 +1089,8 @@ struct BridgeCommand {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
+    dynamic_model: Option<String>,
+    #[serde(default)]
     frozen: Option<String>,
     #[serde(default)]
     simulations: Option<usize>,
@@ -1095,17 +1122,20 @@ struct BridgeGame {
     action_rng: pcg::Pcg,
     tree: Option<search::Search>,
     model: String,
+    dynamic_model: Option<String>,
     frozen: String,
     options: Options,
     setup_simulations: Option<usize>,
     setup_temperature: Option<f64>,
     eval_mode: bool,
+    _active_guard: Option<batch_gpu::ActiveGameGuard>,
 }
 
 struct BridgeTask {
     req_id: u64,
     game_arc: Arc<Mutex<BridgeGame>>,
     key: (String, String, u32),
+    dynamic_model: Option<String>,
     need_frozen: bool,
     enc: Encoder,
     stepper: Option<search::SearchStepper>,
@@ -1144,6 +1174,7 @@ fn init_bridge_task(
         return Ok(Err((g.enc.id(&g.world.e, g.world.e.actions[0]), vec![])));
     }
     let key = (g.model.clone(), g.frozen.clone(), 0);
+    let dynamic_model = g.dynamic_model.clone();
     let need_frozen = g.options.mcts_opponent == MctsOpponent::FrozenMlp;
     ensure_models(cache, &[key.clone(), key.clone()], provider, [need_frozen, need_frozen])?;
     let seed = g.search_rng.u64();
@@ -1171,6 +1202,7 @@ fn init_bridge_task(
         req_id,
         game_arc,
         key,
+        dynamic_model,
         need_frozen,
         enc,
         stepper: Some(stepper),
@@ -1244,12 +1276,12 @@ fn serve_bridge_pool(
                         break;
                     }
 
-                    let mut pending_by_model: HashMap<String, Vec<(usize, Vec<Vec<f32>>)>> =
+                    let mut pending_by_model: HashMap<(String, Option<String>), Vec<(usize, Vec<Vec<f32>>)>> =
                         HashMap::new();
                     let mut idx = 0;
                     while idx < active.len() {
                         let req_id = active[idx].req_id;
-                        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Option<(String, Vec<Vec<f32>>)>, String> {
+                        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Option<(String, Option<String>, Vec<Vec<f32>>)>, String> {
                             let t = &mut active[idx];
                             ensure_models(
                                 &mut cache,
@@ -1268,7 +1300,7 @@ fn serve_bridge_pool(
                                 search::StepOutcome::NeedCandidate { stepper, features } => {
                                     t.stepper = Some(stepper);
                                     t.infer_start = Some(Instant::now());
-                                    Ok(Some((t.key.0.clone(), features)))
+                                    Ok(Some((t.key.0.clone(), t.dynamic_model.clone(), features)))
                                 }
                                 search::StepOutcome::Done { mut search, result } => {
                                     let mut g = t.game_arc.lock().unwrap();
@@ -1303,8 +1335,8 @@ fn serve_bridge_pool(
                             }
                         }));
                         match res {
-                            Ok(Ok(Some((model_path, features)))) => {
-                                pending_by_model.entry(model_path).or_default().push((idx, features));
+                            Ok(Ok(Some((model_path, fallback_model, features)))) => {
+                                pending_by_model.entry((model_path, fallback_model)).or_default().push((idx, features));
                                 idx += 1;
                             }
                             Ok(Ok(None)) => {
@@ -1326,14 +1358,18 @@ fn serve_bridge_pool(
 
                     if !pending_by_model.is_empty() {
                         let mut failed_indices: Vec<(usize, String)> = Vec::new();
-                        for (model_path, entries) in pending_by_model {
+                        for ((model_path, fallback_model), entries) in pending_by_model {
                             let mut flat = Vec::new();
                             let mut counts = Vec::with_capacity(entries.len());
                             for (_, feats) in &entries {
                                 counts.push(feats.len());
                                 flat.extend(feats.iter().cloned());
                             }
-                            match client.predict_batch(&model_path, flat) {
+                            match client.predict_batch_with_fallback(
+                                &model_path,
+                                fallback_model.as_deref(),
+                                flat,
+                            ) {
                                 Ok(outputs) => {
                                     let mut iter = outputs.into_iter();
                                     for ((task_idx, _), count) in entries.into_iter().zip(counts) {
@@ -1404,6 +1440,7 @@ fn serve_bridge_pool(
                         action_rng: pcg::Pcg::new(rng::named(t.seat_seeds[seat], "action-sampling")),
                         tree: None,
                         model,
+                        dynamic_model: cmd.dynamic_model,
                         frozen,
                         options: Options {
                             simulations: Some(sims),
@@ -1420,6 +1457,7 @@ fn serve_bridge_pool(
                         setup_simulations: cmd.setup_simulations,
                         setup_temperature: cmd.setup_temperature,
                         eval_mode: cmd.eval_mode,
+                        _active_guard: Some(batch_queue.active_guard()),
                     };
                     sessions
                         .lock()

@@ -61,7 +61,7 @@ def latest_v2_transformer_checkpoint():
 
 
 def _build_config(checkpoint_path, model_id='XD-CNN', mcts_opponent='frozen-mlp'):
-    frozen = json.loads(FROZEN_CONFIG.read_text())['checkpoint']
+    frozen = json.loads(FROZEN_CONFIG.read_text())['checkpoint'] if mcts_opponent == 'frozen-mlp' else None
     return {
         'checkpoint': {
             'path': str(checkpoint_path.relative_to(ROOT)),
@@ -86,19 +86,20 @@ def _build_config(checkpoint_path, model_id='XD-CNN', mcts_opponent='frozen-mlp'
     }
 
 
-def _check_latest_availability(ckpt_fn, label):
+def _check_latest_availability(ckpt_fn, label, require_frozen=False):
     ready, reason = NeuralPolicyPlayer.availability()
     if not ready:
         return ready, reason
     ckpt = ckpt_fn()
     if not ckpt.is_file():
         return False, f'Latest {label} checkpoint missing: {ckpt}'
-    try:
-        frozen = json.loads(FROZEN_CONFIG.read_text())['checkpoint']
-        if file_digest(ROOT / frozen['path']) != frozen['sha256']:
-            return False, 'Frozen search opponent checksum differs'
-    except (OSError, KeyError, ValueError) as error:
-        return False, f'Latest {label} config unavailable: {error}'
+    if require_frozen:
+        try:
+            frozen = json.loads(FROZEN_CONFIG.read_text())['checkpoint']
+            if file_digest(ROOT / frozen['path']) != frozen['sha256']:
+                return False, 'Frozen search opponent checksum differs'
+        except (OSError, KeyError, ValueError) as error:
+            return False, f'Latest {label} config unavailable: {error}'
     return True, ''
 
 
@@ -115,14 +116,19 @@ def _choose_latest(observation, ckpt_fn, expected_model_id, simulations=128, mct
     safe = from_web_view(observation, color)
     mode = 'policy' if sims == 0 else 'search'
     session = (observation.get('game', {}).get('id'), color) if mode == 'search' else None
-    runtime = cached_runtime(str(ckpt), ref['sha256'], mode, frozen['sha256'], session, device='cpu')
+    frozen_sha = frozen['sha256'] if (mode == 'search' and frozen is not None) else None
+    runtime = cached_runtime(str(ckpt), ref['sha256'], mode, frozen_sha, session, device='cpu')
     require(
         runtime.policy.metadata['model_id'] == expected_model_id,
         f'Latest web agent must use {expected_model_id}',
     )
     import torch
     with runtime.lock:
-        if mode == 'search' and runtime.opponent is None:
+        if mode == 'search' and mcts_opponent == 'frozen-mlp' and runtime.opponent is None:
+            require(
+                frozen is not None and file_digest(ROOT / frozen['path']) == frozen['sha256'],
+                'Frozen search opponent checkpoint missing or changed',
+            )
             runtime.opponent = NeuralCheckpoint(ROOT / frozen['path'], device='cpu')
             runtime.opponent_sha = frozen['sha256']
     torch.set_num_threads(1)

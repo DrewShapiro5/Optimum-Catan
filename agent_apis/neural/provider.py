@@ -101,16 +101,18 @@ class NeuralRuntime:
             )
             return action_json
         require(context.mode in ('time','simulations'),'Neural search requires an explicit search budget')
-        settings=context.settings['search'];frozen=settings['opponent_checkpoint']
-        require(frozen and file_digest(ROOT/frozen['path'])==frozen['sha256'],'Frozen opponent checkpoint missing or changed')
-        with self.lock:
-            if self.opponent is None:
-                self.opponent=NeuralCheckpoint(ROOT/frozen['path'],device='cpu');self.opponent_sha=frozen['sha256']
-                meta=self.opponent.metadata
-                require(meta['model_id']=='MLP' and meta['training_seed']==11,'Frozen search opponent must be seed-11 D2/W0 MLP')
-                require(meta['configuration']['data']['composition']=='D2' and meta['configuration']['data']['weighting']=='W0',
-                        'Frozen search opponent must retain its D2/W0 recipe')
-        require(self.opponent_sha==frozen['sha256'],'Frozen opponent changed within a match')
+        settings=context.settings['search']
+        if settings.get('mcts_opponent','frozen-mlp')=='frozen-mlp':
+            frozen=settings['opponent_checkpoint']
+            require(frozen and file_digest(ROOT/frozen['path'])==frozen['sha256'],'Frozen opponent checkpoint missing or changed')
+            with self.lock:
+                if self.opponent is None:
+                    self.opponent=NeuralCheckpoint(ROOT/frozen['path'],device='cpu');self.opponent_sha=frozen['sha256']
+                    meta=self.opponent.metadata
+                    require(meta['model_id']=='MLP' and meta['training_seed']==11,'Frozen search opponent must be seed-11 D2/W0 MLP')
+                    require(meta['configuration']['data']['composition']=='D2' and meta['configuration']['data']['weighting']=='W0',
+                            'Frozen search opponent must retain its D2/W0 recipe')
+            require(self.opponent_sha==frozen['sha256'],'Frozen opponent changed within a match')
         from agent_apis.stochastic_search import StochasticSearch
         count=context.simulations if context.mode=='simulations' else 1000000
         if settings.get('reuse_subtree',False):

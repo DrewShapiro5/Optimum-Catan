@@ -247,6 +247,8 @@ def collect_neural_block(
     setup_temperature=1.5,
     print_games=False,
     fixed_batch=None,
+    dynamic_onnx_a=None,
+    dynamic_onnx_b=None,
 ):
     """Collect `target_games` completed games using native Rust GPU --pool."""
     block_dir.mkdir(parents=True, exist_ok=True)
@@ -356,6 +358,10 @@ def collect_neural_block(
             'eval_mode': False,
             'mcts_opponent': mcts_opponent,
         }
+        if dynamic_onnx_a is not None and dynamic_onnx_b is not None:
+            req['dynamic_models'] = [
+                str(dynamic_onnx_a if c == seat_a else dynamic_onnx_b) for c in colors
+            ]
         proc.stdin.write(json.dumps(req, separators=(',', ':'), allow_nan=False) + '\n')
         proc.stdin.flush()
         in_flight += 1
@@ -442,6 +448,7 @@ def collect_jsettlers_block(
     setup_temperature=1.5,
     print_games=False,
     fixed_batch=None,
+    dynamic_learner_onnx=None,
 ):
     """Collect `target_games` completed JSettlers vs Model games via native GPU --bridge-pool + pooled JVMs."""
     block_dir.mkdir(parents=True, exist_ok=True)
@@ -506,7 +513,9 @@ def collect_jsettlers_block(
             game_setup_temp = setup_temperature if (setup_exploration_games > 0 and attempt < setup_exploration_games) else None
             bridge.call(
                 op='init', game_id=gid, task=task, learner_seat=learner_seat,
-                model=str(learner_onnx), frozen=str(frozen_onnx),
+                model=str(learner_onnx),
+                dynamic_model=(str(dynamic_learner_onnx) if dynamic_learner_onnx is not None else None),
+                frozen=str(frozen_onnx),
                 simulations=protocol['simulations'], setup_simulations=eff_setup_sims,
                 setup_temperature=game_setup_temp, lanes=mcts_lanes,
                 virtual_loss=virtual_loss, eval_mode=False,
@@ -823,8 +832,14 @@ def run_one_cohort(
 
     if use_static_batch:
         cnn_onnx = export_checkpoint_coreml_static(cnn_ref, batch_size=args.coreml_batch, dtype=onnx_dtype)
+        cnn_dynamic_onnx = (
+            export_checkpoint_dynamic(cnn_ref, dtype=onnx_dtype)
+            if args.gpu_backend != 'coreml'
+            else None
+        )
     else:
         cnn_onnx = export_checkpoint_dynamic(cnn_ref, dtype=onnx_dtype)
+        cnn_dynamic_onnx = None
 
     block_refs = {}
     block_stats = {}
@@ -843,6 +858,8 @@ def run_one_cohort(
             setup_temperature=args.setup_temperature,
             print_games=args.print_games,
             fixed_batch=eff_fixed_batch,
+            dynamic_onnx_a=cnn_dynamic_onnx,
+            dynamic_onnx_b=cnn_dynamic_onnx,
         )
     if args.jsettlers_cnn_games > 0:
         block_refs['jsettlers_vs_cnn'], block_stats['jsettlers_vs_cnn'] = collect_jsettlers_block(
@@ -857,6 +874,7 @@ def run_one_cohort(
             setup_temperature=args.setup_temperature,
             print_games=args.print_games,
             fixed_batch=eff_fixed_batch,
+            dynamic_learner_onnx=cnn_dynamic_onnx,
         )
     collect_seconds = time.perf_counter() - t_collect
 
